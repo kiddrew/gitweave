@@ -30,8 +30,9 @@ export async function detectBase(cwd) {
   throw new Error('Could not detect a base branch. Set "base" in gitweave.json.');
 }
 
-export function defaultPreviewPath(main) {
-  return `${main}-gitweave-preview`;
+// Inside git's own folder: out of the repo tree, so watchers and editors skip it.
+export function defaultPreviewPath(repo) {
+  return join(repo.stateDir, 'preview');
 }
 
 export async function loadConfig(repo, overrides = {}) {
@@ -39,7 +40,7 @@ export async function loadConfig(repo, overrides = {}) {
   const fromFile = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
   const config = { ...DEFAULTS, ...fromFile, ...overrides };
   config.base ||= await detectBase(repo.main);
-  config.previewPath = resolve(repo.main, config.previewPath || defaultPreviewPath(repo.main));
+  config.previewPath = resolve(repo.main, config.previewPath || defaultPreviewPath(repo));
   await out(['rev-parse', '--verify', `${config.base}^{commit}`], { cwd: repo.main }).catch(() => {
     throw new Error(`Base "${config.base}" does not resolve to a commit.`);
   });

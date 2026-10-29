@@ -12,7 +12,7 @@ Requires Node 20+ and git 2.38+. No dependencies.
 
 ```sh
 cd your-repo
-node path/to/gitweave/bin/gitweave.mjs init   # writes gitweave.json, creates ../your-repo-gitweave-preview
+node path/to/gitweave/bin/gitweave.mjs init   # writes gitweave.json, creates the preview worktree in .git/gitweave/preview
 node path/to/gitweave/bin/gitweave.mjs up     # watch, merge, run the app
 ```
 
@@ -34,7 +34,7 @@ Never edit files in the preview worktree; every update resets it.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `base` | `main`, else `master` | Branch every lane is merged onto |
-| `previewPath` | `<repo>-gitweave-preview` | Where the preview worktree lives (keep it outside the repo) |
+| `previewPath` | `.git/gitweave/preview` | Where the preview worktree lives (keep it outside the repo's working tree) |
 | `run` | guessed | Long-running app command, run in the preview. Use a watching dev server for live reload |
 | `rebuild` | none | Run after each update (compiled stacks). On failure the previous app keeps running; on success the app restarts |
 | `install` | guessed | Run when the preview is created or a dependency file changes; the app restarts afterwards |

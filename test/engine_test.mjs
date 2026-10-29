@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { git, out } from '../src/git.mjs';
 import { Engine } from '../src/engine.mjs';
 import { matchesOff, readStatus, setPaused, writeOff } from '../src/status.mjs';
@@ -186,6 +186,6 @@ test('engine never modifies source worktrees', async (t) => {
   const before = await Promise.all([main, a].map(fingerprint));
   await new Engine(repo, config, { ...quiet, run: false }).cycle({ force: true });
   assert.deepEqual(await Promise.all([main, a].map(fingerprint)), before);
-  assert.ok(dirname(config.previewPath) === dirname(main));
+  assert.equal(config.previewPath, join(repo.stateDir, 'preview'));
   assert.equal(await out(['rev-parse', 'HEAD'], { cwd: config.previewPath }), readStatus(repo).merged);
 });

@@ -123,6 +123,7 @@ async function main(argv) {
     }
     const live = rows.filter((r) => r.state === 'live').length;
     console.log(`\n${live} of ${rows.length} lanes live${status ? ` · preview @ ${status.merged?.slice(0, 7)} on ${status.base.name}` : ' · no merge yet (run `gitweave up`)'}`);
+    console.log(`preview: ${shortPath(config.previewPath)}`);
     if ((command === 'on' || command === 'off') && status) console.log('A running `gitweave up` picks this up within a couple of seconds.');
     return 0;
   }
