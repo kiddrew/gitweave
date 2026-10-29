@@ -14,7 +14,7 @@ export class Engine {
   constructor(repo, config, { log = console.log, appLog, run = true, update = true } = {}) {
     this.repo = repo;
     this.config = config;
-    this.log = (msg) => log(`[braid ${stamp()}] ${msg}`);
+    this.log = (msg) => log(`[gitweave ${stamp()}] ${msg}`);
     this.appLog = appLog || ((line) => log(`[app] ${line}`));
     this.update = update;
     this.snapshots = new Map();

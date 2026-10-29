@@ -1,9 +1,9 @@
 {
-  "name": "braid",
+  "name": "gitweave",
   "version": "0.1.0",
   "description": "Live local preview of every git worktree merged together.",
   "type": "module",
-  "bin": { "braid": "bin/braid.mjs" },
+  "bin": { "gitweave": "bin/gitweave.mjs" },
   "engines": { "node": ">=20" },
   "scripts": {
     "test": "node --test --test-concurrency=1 test/*_test.mjs"

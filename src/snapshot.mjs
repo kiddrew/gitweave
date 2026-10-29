@@ -20,8 +20,8 @@ export async function snapshotWorktree(repo, lane, previous) {
   const headTree = await out(['rev-parse', `${head}^{tree}`], { cwd });
   const commit = tree === headTree
     ? head
-    : await out(['commit-tree', tree, '-p', head, '-m', `braid snapshot: ${lane.name}`], { cwd, env: IDENTITY });
-  await git(['update-ref', `refs/braid/snap/${refSafe(lane.name)}`, commit], { cwd: repo.main });
+    : await out(['commit-tree', tree, '-p', head, '-m', `gitweave snapshot: ${lane.name}`], { cwd, env: IDENTITY });
+  await git(['update-ref', `refs/gitweave/snap/${refSafe(lane.name)}`, commit], { cwd: repo.main });
   return { head, tree, commit };
 }
 

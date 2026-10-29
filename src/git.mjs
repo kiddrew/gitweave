@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
 
-// Commits made by braid never depend on the user's git identity being configured.
+// Commits made by gitweave never depend on the user's git identity being configured.
 export const IDENTITY = {
-  GIT_AUTHOR_NAME: 'braid',
-  GIT_AUTHOR_EMAIL: 'braid@localhost',
-  GIT_COMMITTER_NAME: 'braid',
-  GIT_COMMITTER_EMAIL: 'braid@localhost',
+  GIT_AUTHOR_NAME: 'gitweave',
+  GIT_AUTHOR_EMAIL: 'gitweave@localhost',
+  GIT_COMMITTER_NAME: 'gitweave',
+  GIT_COMMITTER_EMAIL: 'gitweave@localhost',
 };
 
 export class GitError extends Error {
@@ -18,7 +18,7 @@ export class GitError extends Error {
 
 function baseEnv() {
   const env = { ...process.env };
-  // A parent hook or tool may point git elsewhere; braid always resolves from cwd.
+  // A parent hook or tool may point git elsewhere; gitweave always resolves from cwd.
   delete env.GIT_DIR;
   delete env.GIT_WORK_TREE;
   delete env.GIT_INDEX_FILE;
@@ -45,7 +45,7 @@ export async function checkGitVersion() {
   const version = await out(['version']);
   const match = version.match(/(\d+)\.(\d+)/);
   if (!match || Number(match[1]) < 2 || (Number(match[1]) === 2 && Number(match[2]) < 38)) {
-    throw new Error(`braid needs git 2.38 or newer for in-memory merges (found: ${version}).`);
+    throw new Error(`gitweave needs git 2.38 or newer for in-memory merges (found: ${version}).`);
   }
 }
 

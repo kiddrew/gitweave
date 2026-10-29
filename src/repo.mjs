@@ -39,8 +39,8 @@ export async function openRepo(cwd) {
   const worktrees = await listWorktrees(cwd);
   // `git worktree list` always lists the main worktree first.
   const main = worktrees[0]?.bare ? null : worktrees[0]?.path;
-  if (!main) throw new Error('braid needs a repository with a main (non-bare) worktree.');
-  const stateDir = join(commonDir, 'braid');
+  if (!main) throw new Error('gitweave needs a repository with a main (non-bare) worktree.');
+  const stateDir = join(commonDir, 'gitweave');
   if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
   return { main, commonDir, stateDir };
 }

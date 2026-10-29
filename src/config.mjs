@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { git, out } from './git.mjs';
 
-export const CONFIG_FILE = 'braid.json';
+export const CONFIG_FILE = 'gitweave.json';
 
 export const DEFAULTS = {
   base: null,
@@ -27,11 +27,11 @@ export async function detectBase(cwd) {
   }
   const remoteHead = await git(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], { cwd, ok: [0, 1] });
   if (remoteHead.code === 0) return remoteHead.stdout.trim();
-  throw new Error('Could not detect a base branch. Set "base" in braid.json.');
+  throw new Error('Could not detect a base branch. Set "base" in gitweave.json.');
 }
 
 export function defaultPreviewPath(main) {
-  return `${main}-braid-preview`;
+  return `${main}-gitweave-preview`;
 }
 
 export async function loadConfig(repo, overrides = {}) {
@@ -46,7 +46,7 @@ export async function loadConfig(repo, overrides = {}) {
   return config;
 }
 
-// A starting config guessed from the project, written by `braid init`.
+// A starting config guessed from the project, written by `gitweave init`.
 export async function suggestConfig(repo) {
   const suggestion = { base: await detectBase(repo.main) };
   const pkgFile = join(repo.main, 'package.json');
@@ -63,8 +63,8 @@ export async function suggestConfig(repo) {
     suggestion.rebuild = 'cargo build';
     suggestion.run = `cargo run`;
   } else if (existsSync(join(repo.main, 'go.mod'))) {
-    suggestion.rebuild = `go build -o .braid-bin/${basename(repo.main)} .`;
-    suggestion.run = `./.braid-bin/${basename(repo.main)}`;
+    suggestion.rebuild = `go build -o .gitweave-bin/${basename(repo.main)} .`;
+    suggestion.run = `./.gitweave-bin/${basename(repo.main)}`;
   }
   suggestion.remotePatterns = [];
   return suggestion;
