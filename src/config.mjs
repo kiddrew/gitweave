@@ -17,7 +17,7 @@ export const DEFAULTS = {
   remotePatterns: [],
   order: [],
   ignore: ['.git', 'node_modules', 'dist', 'build', 'target', '.next', '.turbo', '.cache', '.svelte-kit', 'coverage'],
-  copy: ['.env', '.env.local', '.dev.vars'],
+  copy: ['.env', '.env.local', '.dev.vars', 'pnpm-workspace.yaml', '.npmrc'],
   settleMs: 1500,
   pollMs: 2000,
   fetchIntervalSec: 60,

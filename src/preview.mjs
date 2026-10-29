@@ -15,15 +15,19 @@ export async function ensurePreview(repo, config, startCommit) {
   return { created: true };
 }
 
-// Untracked local files the app needs (like .env) are copied from the main
-// worktree, since they never travel through git.
-export function copyLocalFiles(repo, config) {
+// Untracked local files the app needs (like .env, or pnpm's build approvals in
+// an uncommitted pnpm-workspace.yaml) are copied from the main worktree, since
+// they never travel through git. A name the merge tracks is left to git.
+export async function copyLocalFiles(repo, config) {
   const copied = [];
   for (const name of config.copy) {
     const from = join(repo.main, name);
     const to = join(config.previewPath, name);
     if (!existsSync(from)) continue;
+    const tracked = await git(['ls-files', '--error-unmatch', '--', name], { cwd: config.previewPath, ok: [0, 1] });
+    if (tracked.code === 0) continue;
     if (existsSync(to) && readFileSync(from).equals(readFileSync(to))) continue;
+    mkdirSync(dirname(to), { recursive: true });
     copyFileSync(from, to);
     copied.push(name);
   }
@@ -44,7 +48,7 @@ export async function updatePreview(repo, config, commit) {
     ? []
     : (await out(['diff', '--name-only', '--no-renames', current, commit], { cwd })).split('\n').filter(Boolean);
   await git(['reset', '--hard', '--quiet', commit], { cwd });
-  const copied = copyLocalFiles(repo, config);
+  const copied = await copyLocalFiles(repo, config);
   const depsChanged = changed.some((file) => config.installOn.includes(basename(file)));
   return { changed, copied, depsChanged };
 }

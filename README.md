@@ -42,7 +42,7 @@ Never edit files in the preview worktree; every update resets it.
 | `remotePatterns` | `[]` | Remote branches to include as lanes, e.g. `["origin/claude/*"]` (fetched every `fetchIntervalSec`) |
 | `order` | `[]` | Lane names merged first, in this order. Then the main worktree, other worktrees, remotes, alphabetically |
 | `ignore` | `node_modules`, build dirs | Path segments whose changes don't trigger a merge |
-| `copy` | `.env`, `.env.local`, `.dev.vars` | Untracked files copied from the main worktree into the preview |
+| `copy` | `.env`, `.env.local`, `.dev.vars`, `pnpm-workspace.yaml`, `.npmrc` | Files copied from the main worktree into the preview when git doesn't track them (e.g. pnpm build approvals kept in an uncommitted `pnpm-workspace.yaml`) |
 | `settleMs` / `pollMs` | 1500 / 2000 | Quiet period before merging; how often to check base, worktrees and pause |
 | `portless` | `false` | Serve the app at a stable `.localhost` URL through [portless](https://github.com/vercel-labs/portless): `true` uses `gitweave.<repo>`, a string picks the name. Falls back to the plain app if portless isn't installed |
 | `anyship` | `false` | Deploy the merged preview to Anyship while `up` runs (also `up --anyship`) |

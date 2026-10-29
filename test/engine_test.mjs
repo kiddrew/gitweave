@@ -189,3 +189,30 @@ test('engine never modifies source worktrees', async (t) => {
   assert.ok(config.previewPath.startsWith(process.env.GITWEAVE_HOME), config.previewPath);
   assert.equal(await out(['rev-parse', 'HEAD'], { cwd: config.previewPath }), readStatus(repo).merged);
 });
+
+test('untracked local settings are copied into the preview; tracked ones are left to git', async (t) => {
+  const { repo, config, main, cleanup } = await setup({ 'app.txt': 'a\n', '.npmrc': 'tracked=1\n', '.gitignore': 'node_modules/\n' });
+  t.after(cleanup);
+  write(join(main, 'pnpm-workspace.yaml'), 'allowBuilds:\n  esbuild: false\n');
+  write(join(main, '.npmrc'), 'local edit\n');
+  const engine = new Engine(repo, config, { ...quiet, run: false });
+  await engine.cycle({ force: true });
+  assert.equal(read(join(config.previewPath, 'pnpm-workspace.yaml')), 'allowBuilds:\n  esbuild: false\n');
+  // Comes through the merge (the main worktree is a lane), not the copy.
+  assert.equal(read(join(config.previewPath, '.npmrc')), 'local edit\n');
+});
+
+test('a failed install is retried on the next pass', async (t) => {
+  const { repo, config, main, root, cleanup } = await setup(undefined, { install: `test -f "${'$'}{FLAG}"` });
+  t.after(cleanup);
+  process.env.FLAG = join(root, 'ok');
+  t.after(() => delete process.env.FLAG);
+  const engine = new Engine(repo, config, { ...quiet, run: false });
+  await engine.cycle({ force: true });
+  assert.equal(engine.build.state, 'failed');
+  write(join(root, 'ok'), '');
+  write(join(main, 'unrelated.txt'), 'x\n');
+  engine.allDirty = true;
+  await engine.cycle();
+  assert.equal(engine.build.state, 'ok');
+});

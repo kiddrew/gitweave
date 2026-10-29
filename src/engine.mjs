@@ -1,5 +1,5 @@
-import { watch } from 'node:fs';
-import { sep } from 'node:path';
+import { existsSync, rmSync, watch, writeFileSync } from 'node:fs';
+import { join, sep } from 'node:path';
 import { git, out } from './git.mjs';
 import { discoverLanes } from './lanes.mjs';
 import { snapshotWorktree, resolveRemote } from './snapshot.mjs';
@@ -106,8 +106,10 @@ export class Engine {
       const { created } = await ensurePreview(repo, config, base);
       const applied = await updatePreview(repo, config, result.commit);
       status.changed = applied.changed;
-      if (created || applied.depsChanged || applied.changed.length || applied.copied.length) {
-        await this.afterUpdate({ created, ...applied });
+      // A failed install (here or in `init`) is retried on the next pass, not only when dependencies change.
+      const reinstall = Boolean(config.install) && !existsSync(this.installedFile());
+      if (created || reinstall || applied.depsChanged || applied.changed.length || applied.copied.length) {
+        await this.afterUpdate({ created, ...applied, depsChanged: applied.depsChanged || reinstall });
       }
       status.build = this.build;
       status.app = this.app;
@@ -127,9 +129,11 @@ export class Engine {
       this.log(`installing dependencies (${config.install})`);
       const install = await runCommand(config.install, cwd, this.appLog);
       if (install.code !== 0) {
+        rmSync(this.installedFile(), { force: true });
         this.build = { state: 'failed', step: 'install', at: new Date().toISOString(), output: install.output };
         return;
       }
+      writeFileSync(this.installedFile(), new Date().toISOString());
       restart = true;
     }
     if (config.rebuild && (created || changed.length || depsChanged)) {
@@ -146,6 +150,10 @@ export class Engine {
     // An in-flight pass can finish after stop(); it must not relaunch the app.
     if (!this.runner || this.stopped) return;
     if (restart || !this.runner.child) await this.runner.restart();
+  }
+
+  installedFile() {
+    return join(this.repo.stateDir, 'installed');
   }
 
   emptyStatus(base) {

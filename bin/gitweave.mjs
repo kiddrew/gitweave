@@ -3,7 +3,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { CONFIG_FILE, loadConfig, suggestConfig } from '../src/config.mjs';
 import { Engine } from '../src/engine.mjs';
-import { ensurePreview } from '../src/preview.mjs';
+import { copyLocalFiles, ensurePreview } from '../src/preview.mjs';
 import { openRepo } from '../src/repo.mjs';
 import { anyshipLine, matchesOff, readOff, readStatus, setPaused, summarize, writeOff } from '../src/status.mjs';
 import { discoverLanes } from '../src/lanes.mjs';
@@ -52,10 +52,12 @@ async function main(argv) {
     const base = await out(['rev-parse', `${config.base}^{commit}`], { cwd: repo.main });
     const { created } = await ensurePreview(repo, config, base);
     console.log(created ? `Created preview worktree at ${config.previewPath}` : `Preview worktree: ${config.previewPath}`);
+    await copyLocalFiles(repo, config);
     if (created && config.install) {
       console.log(`Installing dependencies in the preview (${config.install})…`);
       const { code } = await runCommand(config.install, config.previewPath, (line) => console.log(`[install] ${line}`));
-      if (code !== 0) console.log('Install failed; `gitweave up` will retry when dependencies change.');
+      if (code === 0) writeFileSync(join(repo.stateDir, 'installed'), new Date().toISOString());
+      else console.log('Install failed; `gitweave up` will retry it.');
     }
     return 0;
   }
