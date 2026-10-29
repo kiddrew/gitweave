@@ -41,6 +41,12 @@ export const setPaused = (repo, paused) => (paused ? writeFileSync(pauseFile(rep
 
 const short = (sha) => (sha ? sha.slice(0, 7) : '-------');
 
+export function anyshipLine(anyship) {
+  if (!anyship || anyship.state === 'idle') return 'anyship: waiting for the first deploy';
+  const outcome = anyship.state === 'failed' ? `failed: ${anyship.reason}` : anyship.state;
+  return `anyship: ${anyship.url || '(no url yet)'} @ ${short(anyship.commit)} (${outcome})`;
+}
+
 export function summarize(status, { time: withTime = true } = {}) {
   if (!status) return 'No status yet. Run `gitweave up` or `gitweave merge`.';
   const time = withTime ? `${new Date(status.updatedAt).toLocaleTimeString()} ` : '';

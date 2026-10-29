@@ -186,6 +186,6 @@ test('engine never modifies source worktrees', async (t) => {
   const before = await Promise.all([main, a].map(fingerprint));
   await new Engine(repo, config, { ...quiet, run: false }).cycle({ force: true });
   assert.deepEqual(await Promise.all([main, a].map(fingerprint)), before);
-  assert.equal(config.previewPath, join(repo.stateDir, 'preview'));
+  assert.ok(config.previewPath.startsWith(process.env.GITWEAVE_HOME), config.previewPath);
   assert.equal(await out(['rev-parse', 'HEAD'], { cwd: config.previewPath }), readStatus(repo).merged);
 });

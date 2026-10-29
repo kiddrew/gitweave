@@ -1,5 +1,5 @@
-import { copyFileSync, existsSync, readFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { git, out } from './git.mjs';
 import { listWorktrees, realpathMaybe } from './repo.mjs';
 
@@ -10,6 +10,7 @@ export async function ensurePreview(repo, config, startCommit) {
   if (existsSync(config.previewPath)) {
     throw new Error(`${config.previewPath} exists but is not a worktree of this repository. Move it or set "previewPath".`);
   }
+  mkdirSync(dirname(config.previewPath), { recursive: true });
   await git(['worktree', 'add', '--detach', '--quiet', config.previewPath, startCommit], { cwd: repo.main });
   return { created: true };
 }

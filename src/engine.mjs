@@ -6,12 +6,13 @@ import { snapshotWorktree, resolveRemote } from './snapshot.mjs';
 import { integrate } from './merge.mjs';
 import { ensurePreview, updatePreview } from './preview.mjs';
 import { AppRunner, runCommand } from './runner.mjs';
-import { isPaused, matchesOff, readOff, summarize, writeStatus } from './status.mjs';
+import { AnyshipDeployer } from './anyship.mjs';
+import { isPaused, matchesOff, readOff, readStatus, summarize, writeStatus } from './status.mjs';
 
 const stamp = () => new Date().toLocaleTimeString();
 
 export class Engine {
-  constructor(repo, config, { log = console.log, appLog, run = true, update = true } = {}) {
+  constructor(repo, config, { log = console.log, appLog, run = true, update = true, deploy = false } = {}) {
     this.repo = repo;
     this.config = config;
     this.log = (msg) => log(`[gitweave ${stamp()}] ${msg}`);
@@ -33,6 +34,14 @@ export class Engine {
     this.signature = null;
     this.runner = run && config.run && update
       ? new AppRunner(config.run, config.previewPath, { onLine: this.appLog, onState: (s) => this.onAppState(s) })
+      : null;
+    this.deployer = deploy && config.anyship && update
+      ? new AnyshipDeployer(repo, config, {
+        log: this.log,
+        isPaused: () => isPaused(repo),
+        last: readStatus(repo)?.anyship,
+        onState: (anyship) => this.lastStatus && this.writeStatus({ ...this.lastStatus, anyship }),
+      })
       : null;
   }
 
@@ -88,6 +97,7 @@ export class Engine {
       build: this.build,
       app: this.app,
       paused: false,
+      anyship: this.deployer?.state,
     };
 
     if (this.update) {
@@ -102,6 +112,8 @@ export class Engine {
     }
     this.writeStatus(status);
     this.log(summarize(status, { time: false }));
+    // Runs in the background; never holds up the local preview or the app.
+    this.deployer?.schedule(result.commit, base);
     return status;
   }
 
@@ -139,6 +151,7 @@ export class Engine {
   }
 
   writeStatus(status) {
+    if (this.deployer) status = { ...status, anyship: this.deployer.state };
     this.lastStatus = status;
     writeStatus(this.repo, status);
   }
@@ -255,6 +268,7 @@ export class Engine {
     for (const watcher of this.watchers.values()) watcher.close();
     this.watchers.clear();
     while (this.running) await new Promise((r) => setTimeout(r, 20));
+    await this.deployer?.stop();
     if (this.runner) {
       this.runner.closed = true;
       await this.runner.stop();

@@ -5,7 +5,7 @@ import { CONFIG_FILE, loadConfig, suggestConfig } from '../src/config.mjs';
 import { Engine } from '../src/engine.mjs';
 import { ensurePreview } from '../src/preview.mjs';
 import { openRepo } from '../src/repo.mjs';
-import { matchesOff, readOff, readStatus, setPaused, summarize, writeOff } from '../src/status.mjs';
+import { anyshipLine, matchesOff, readOff, readStatus, setPaused, summarize, writeOff } from '../src/status.mjs';
 import { discoverLanes } from '../src/lanes.mjs';
 import { runCommand } from '../src/runner.mjs';
 import { out } from '../src/git.mjs';
@@ -22,10 +22,11 @@ Commands:
   list | ls       Show every lane: live, conflict, off or pending, and where it comes from
   off <lane...>   Take lanes out of the preview (names or globs like 'origin/claude/*')
   on <lane...>    Put lanes back in (--all turns every lane back on)
-  pause | resume  Stop or restart updating the preview (while \`up\` keeps running)
+  pause | resume  Stop or restart updating the preview and Anyship deploys (while \`up\` keeps running)
 
 Options:
   --no-run        (up) Keep the preview updated but don't start the app
+  --anyship       (up) Also deploy the merged preview to Anyship (same as "anyship": true)
   --dry-run       (merge) Report what would be included without touching the preview
   --json          (list, status, merge) Print machine-readable output
 `;
@@ -67,6 +68,7 @@ async function main(argv) {
         const detail = lane.status === 'included' || lane.status === 'off' ? '' : ` (${lane.conflicts?.length ? `conflict in ${lane.conflicts.join(', ')}` : lane.reason})`;
         console.log(`  ${lane.status.padEnd(8)} ${lane.name}${detail}`);
       }
+      if (status.anyship) console.log(anyshipLine(status.anyship));
       if (status.build?.state === 'failed') console.log(`\n${status.build.step} output:\n${status.build.output}`);
     }
     return 0;
@@ -78,7 +80,7 @@ async function main(argv) {
     return 0;
   }
 
-  const config = await loadConfig(repo);
+  const config = await loadConfig(repo, command === 'up' && flags.has('--anyship') ? { anyship: true } : {});
 
   if (command === 'list' || command === 'ls' || command === 'on' || command === 'off') {
     const names = rest.filter((a) => !a.startsWith('--'));
@@ -124,6 +126,7 @@ async function main(argv) {
     const live = rows.filter((r) => r.state === 'live').length;
     console.log(`\n${live} of ${rows.length} lanes live${status ? ` · preview @ ${status.merged?.slice(0, 7)} on ${status.base.name}` : ' · no merge yet (run `gitweave up`)'}`);
     console.log(`preview: ${shortPath(config.previewPath)}`);
+    if (config.anyship || status?.anyship) console.log(anyshipLine(status?.anyship));
     if ((command === 'on' || command === 'off') && status) console.log('A running `gitweave up` picks this up within a couple of seconds.');
     return 0;
   }
@@ -137,7 +140,7 @@ async function main(argv) {
   }
 
   if (command === 'up') {
-    const engine = new Engine(repo, config, { run: !flags.has('--no-run') });
+    const engine = new Engine(repo, config, { run: !flags.has('--no-run'), deploy: true });
     let stopping = false;
     const shutdown = async () => {
       if (stopping) return;
@@ -149,6 +152,7 @@ async function main(argv) {
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
     console.log(`[gitweave] previewing ${config.base} + all worktrees in ${config.previewPath}`);
+    if (config.anyship) console.log(`[gitweave] deploying to Anyship ${config.anyshipDebounceSec}s after changes settle`);
     await engine.start();
     return null;
   }

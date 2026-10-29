@@ -34,6 +34,8 @@ export async function addWorktree(main, name) {
 
 export async function setup(files, overrides = {}) {
   const fixture = await makeRepo(files);
+  // Keep previews (default ~/.gitweave) inside the fixture's temp folder.
+  process.env.GITWEAVE_HOME = join(fixture.root, 'gitweave-home');
   const repo = await openRepo(fixture.main);
   const config = await loadConfig(repo, { settleMs: 100, pollMs: 200, ...overrides });
   return { ...fixture, repo, config };

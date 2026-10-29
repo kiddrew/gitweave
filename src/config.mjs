@@ -1,6 +1,9 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { git, out } from './git.mjs';
+import { listWorktrees, realpathMaybe } from './repo.mjs';
 
 export const CONFIG_FILE = 'gitweave.json';
 
@@ -18,6 +21,9 @@ export const DEFAULTS = {
   settleMs: 1500,
   pollMs: 2000,
   fetchIntervalSec: 60,
+  anyship: false,
+  anyshipReviewApp: 'integration',
+  anyshipDebounceSec: 30,
 };
 
 export async function detectBase(cwd) {
@@ -30,17 +36,30 @@ export async function detectBase(cwd) {
   throw new Error('Could not detect a base branch. Set "base" in gitweave.json.');
 }
 
-// Inside git's own folder: out of the repo tree, so watchers and editors skip it.
+// Outside every repo, so watchers, editors and git's upward search skip it.
+// The short hash keeps two repos with the same folder name apart.
+export const gitweaveHome = () => process.env.GITWEAVE_HOME || join(homedir(), '.gitweave');
+
 export function defaultPreviewPath(repo) {
-  return join(repo.stateDir, 'preview');
+  const id = createHash('sha256').update(realpathMaybe(repo.main)).digest('hex').slice(0, 8);
+  return join(gitweaveHome(), `${basename(repo.main)}-${id}`, 'preview');
 }
+
+// Earlier versions kept the preview in .git/gitweave/preview; keep using it if it's still there.
+async function legacyPreviewPath(repo) {
+  const legacy = join(repo.stateDir, 'preview');
+  const worktrees = await listWorktrees(repo.main);
+  return worktrees.some((wt) => realpathMaybe(wt.path) === realpathMaybe(legacy)) ? legacy : null;
+}
+
+const expandHome = (path) => (path.startsWith('~/') ? join(homedir(), path.slice(2)) : path);
 
 export async function loadConfig(repo, overrides = {}) {
   const file = join(repo.main, CONFIG_FILE);
   const fromFile = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
   const config = { ...DEFAULTS, ...fromFile, ...overrides };
   config.base ||= await detectBase(repo.main);
-  config.previewPath = resolve(repo.main, config.previewPath || defaultPreviewPath(repo));
+  config.previewPath = resolve(repo.main, expandHome(config.previewPath || (await legacyPreviewPath(repo)) || defaultPreviewPath(repo)));
   await out(['rev-parse', '--verify', `${config.base}^{commit}`], { cwd: repo.main }).catch(() => {
     throw new Error(`Base "${config.base}" does not resolve to a commit.`);
   });
