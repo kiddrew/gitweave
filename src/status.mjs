@@ -59,6 +59,7 @@ export function summarize(status, { time: withTime = true } = {}) {
   if (off.length) line += ` · off: ${off.join(', ')}`;
   if (problems.length) line += ` · excluded: ${problems.join('; ')}`;
   if (status.build?.state === 'failed') line += ` · ${status.build.step} failed, previous app still running`;
+  if (status.local) line += ` · ${status.local}`;
   if (status.paused) line += ' · paused';
   return line;
 }

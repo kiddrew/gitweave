@@ -24,7 +24,7 @@ node path/to/gitweave/bin/gitweave.mjs up     # watch, merge, run the app
 | `gitweave list [--json]` (or `ls`) | Every lane with its state (`live`, `conflict`, `error`, `off`, `pending`) and source worktree or remote branch |
 | `gitweave off <lane...>` | Take lanes out of the preview, e.g. one that's broken. Accepts globs like `'origin/claude/*'`, which also cover lanes that appear later |
 | `gitweave on <lane...>` / `gitweave on --all` | Put lanes back in |
-| `gitweave status [--json]` | Last result: included and excluded lanes, conflicting files, build state, last Anyship deploy |
+| `gitweave status [--json]` | Last result: included and excluded lanes, conflicting files, build state, local URL, last Anyship deploy |
 | `gitweave pause` / `gitweave resume` | Stop/start updating the preview and Anyship deploys while `up` keeps running |
 
 Never edit files in the preview worktree; every update resets it.
@@ -44,6 +44,7 @@ Never edit files in the preview worktree; every update resets it.
 | `ignore` | `node_modules`, build dirs | Path segments whose changes don't trigger a merge |
 | `copy` | `.env`, `.env.local`, `.dev.vars` | Untracked files copied from the main worktree into the preview |
 | `settleMs` / `pollMs` | 1500 / 2000 | Quiet period before merging; how often to check base, worktrees and pause |
+| `portless` | `false` | Serve the app at a stable `.localhost` URL through [portless](https://github.com/vercel-labs/portless): `true` uses `gitweave.<repo>`, a string picks the name. Falls back to the plain app if portless isn't installed |
 | `anyship` | `false` | Deploy the merged preview to Anyship while `up` runs (also `up --anyship`) |
 | `anyshipReviewApp` | `integration` | Suffix of the Anyship project the preview deploys to: `<app>-<suffix>` |
 | `anyshipDebounceSec` | 30 | Quiet period after the last merge before deploying |

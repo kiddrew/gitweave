@@ -7,6 +7,7 @@ import { integrate } from './merge.mjs';
 import { ensurePreview, updatePreview } from './preview.mjs';
 import { AppRunner, runCommand } from './runner.mjs';
 import { AnyshipDeployer } from './anyship.mjs';
+import { portlessCommand, portlessName, portlessUrl } from './portless.mjs';
 import { isPaused, matchesOff, readOff, readStatus, summarize, writeStatus } from './status.mjs';
 
 const stamp = () => new Date().toLocaleTimeString();
@@ -97,6 +98,7 @@ export class Engine {
       build: this.build,
       app: this.app,
       paused: false,
+      local: this.local,
       anyship: this.deployer?.state,
     };
 
@@ -247,8 +249,22 @@ export class Engine {
     if (code !== 0) this.log(`fetch failed: ${stderr.trim().split('\n')[0]}`);
   }
 
+  // Route a stable https://<name>.localhost to the app instead of a raw port.
+  async setupPortless() {
+    const name = portlessName(this.repo, this.config);
+    const url = await portlessUrl(name);
+    if (!url) {
+      this.log('portless not found; running the app on its own port');
+      return;
+    }
+    this.runner.command = portlessCommand(name, this.config.run);
+    this.local = url;
+    this.log(`app at ${url}`);
+  }
+
   async start() {
     this.stopped = false;
+    if (this.config.portless && this.runner) await this.setupPortless();
     this.signature = await this.computeSignature();
     await this.syncWatchers();
     await this.trigger({ force: true });

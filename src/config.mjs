@@ -21,6 +21,7 @@ export const DEFAULTS = {
   settleMs: 1500,
   pollMs: 2000,
   fetchIntervalSec: 60,
+  portless: false,
   anyship: false,
   anyshipReviewApp: 'integration',
   anyshipDebounceSec: 30,
