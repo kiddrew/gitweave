@@ -32,7 +32,7 @@ export async function integrate(cwd, baseCommit, lanes) {
     }
     if (mergedTree.trim() !== tree) {
       tree = mergedTree.trim();
-      commit = await out(['commit-tree', tree, '-p', commit, '-p', lane.commit, '-m', `lanes: merge ${lane.name}`], { cwd, env: IDENTITY });
+      commit = await out(['commit-tree', tree, '-p', commit, '-p', lane.commit, '-m', `braid: merge ${lane.name}`], { cwd, env: IDENTITY });
     }
     results.push({ ...entry, status: 'included' });
   }

@@ -10,9 +10,9 @@ import { discoverLanes } from '../src/lanes.mjs';
 import { runCommand } from '../src/runner.mjs';
 import { out } from '../src/git.mjs';
 
-const HELP = `lanes: a live preview of every git worktree merged together
+const HELP = `braid: a live preview of every git worktree merged together
 
-Usage: lanes <command> [options]
+Usage: braid <command> [options]
 
 Commands:
   init            Write ${CONFIG_FILE} (guessed from the project) and create the preview worktree
@@ -45,7 +45,7 @@ async function main(argv) {
     if (existsSync(file)) console.log(`${CONFIG_FILE} already exists; leaving it as is.`);
     else {
       writeFileSync(file, JSON.stringify(await suggestConfig(repo), null, 2) + '\n');
-      console.log(`Wrote ${file}. Check "run", "rebuild" and "install" before running \`lanes up\`.`);
+      console.log(`Wrote ${file}. Check "run", "rebuild" and "install" before running \`braid up\`.`);
     }
     const config = await loadConfig(repo);
     const base = await out(['rev-parse', `${config.base}^{commit}`], { cwd: repo.main });
@@ -54,7 +54,7 @@ async function main(argv) {
     if (created && config.install) {
       console.log(`Installing dependencies in the preview (${config.install})…`);
       const { code } = await runCommand(config.install, config.previewPath, (line) => console.log(`[install] ${line}`));
-      if (code !== 0) console.log('Install failed; `lanes up` will retry when dependencies change.');
+      if (code !== 0) console.log('Install failed; `braid up` will retry when dependencies change.');
     }
     return 0;
   }
@@ -85,7 +85,7 @@ async function main(argv) {
     const lanes = await discoverLanes(repo, config);
     let off = readOff(repo);
     if (command === 'off') {
-      if (!names.length) throw new Error('Name at least one lane to turn off (see `lanes list`).');
+      if (!names.length) throw new Error('Name at least one lane to turn off (see `braid list`).');
       off = writeOff(repo, [...off, ...names]);
     } else if (command === 'on') {
       if (!names.length && !flags.has('--all')) throw new Error('Name at least one lane to turn on, or pass --all.');
@@ -97,7 +97,7 @@ async function main(argv) {
     }
     const status = readStatus(repo);
     // State per lane: live (in the preview now), conflict/error (on but left out),
-    // off (switched off), pending (on, not merged yet: `lanes up` isn't running or hasn't caught up).
+    // off (switched off), pending (on, not merged yet: `braid up` isn't running or hasn't caught up).
     const rows = lanes.map((lane) => {
       const last = status?.lanes.find((l) => l.name === lane.name);
       const state = matchesOff(lane.name, off) ? 'off'
@@ -122,8 +122,8 @@ async function main(argv) {
       console.log(`  ${r.state.padEnd(9)}${r.name.padEnd(width + 2)}${r.kind === 'worktree' ? shortPath(r.source) : r.source}${r.detail ? `  (${r.state === 'conflict' ? 'conflict in ' : ''}${r.detail})` : ''}`);
     }
     const live = rows.filter((r) => r.state === 'live').length;
-    console.log(`\n${live} of ${rows.length} lanes live${status ? ` · preview @ ${status.merged?.slice(0, 7)} on ${status.base.name}` : ' · no merge yet (run `lanes up`)'}`);
-    if ((command === 'on' || command === 'off') && status) console.log('A running `lanes up` picks this up within a couple of seconds.');
+    console.log(`\n${live} of ${rows.length} lanes live${status ? ` · preview @ ${status.merged?.slice(0, 7)} on ${status.base.name}` : ' · no merge yet (run `braid up`)'}`);
+    if ((command === 'on' || command === 'off') && status) console.log('A running `braid up` picks this up within a couple of seconds.');
     return 0;
   }
 
@@ -141,13 +141,13 @@ async function main(argv) {
     const shutdown = async () => {
       if (stopping) return;
       stopping = true;
-      console.log('\n[lanes] stopping…');
+      console.log('\n[braid] stopping…');
       await engine.stop();
       process.exit(0);
     };
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
-    console.log(`[lanes] previewing ${config.base} + all worktrees in ${config.previewPath}`);
+    console.log(`[braid] previewing ${config.base} + all worktrees in ${config.previewPath}`);
     await engine.start();
     return null;
   }
@@ -160,7 +160,7 @@ async function main(argv) {
 main(process.argv.slice(2)).then(
   (code) => code !== null && process.exit(code),
   (error) => {
-    console.error(`lanes: ${error.message}`);
+    console.error(`braid: ${error.message}`);
     process.exit(1);
   },
 );

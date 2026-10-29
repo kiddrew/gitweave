@@ -18,7 +18,7 @@ export function readStatus(repo) {
 export const offFile = (repo) => join(repo.stateDir, 'off.json');
 
 // Lanes the user switched off. Entries are names or simple `*` globs, so
-// `lanes off 'origin/claude/*'` also covers branches that appear later.
+// `braid off 'origin/claude/*'` also covers branches that appear later.
 export function readOff(repo) {
   const file = offFile(repo);
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : [];
@@ -42,7 +42,7 @@ export const setPaused = (repo, paused) => (paused ? writeFileSync(pauseFile(rep
 const short = (sha) => (sha ? sha.slice(0, 7) : '-------');
 
 export function summarize(status, { time: withTime = true } = {}) {
-  if (!status) return 'No status yet. Run `lanes up` or `lanes merge`.';
+  if (!status) return 'No status yet. Run `braid up` or `braid merge`.';
   const time = withTime ? `${new Date(status.updatedAt).toLocaleTimeString()} ` : '';
   const included = status.lanes.filter((l) => l.status === 'included').map((l) => l.name);
   const off = status.lanes.filter((l) => l.status === 'off').map((l) => l.name);

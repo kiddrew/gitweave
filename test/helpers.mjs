@@ -14,7 +14,7 @@ export const read = (path) => readFileSync(path, 'utf8');
 // A fresh repo with a committed base, inside its own temp folder so the
 // preview worktree (a sibling of the main worktree) is cleaned up with it.
 export async function makeRepo(files = { 'app.txt': 'one\ntwo\nthree\n', '.gitignore': 'node_modules/\n' }) {
-  const root = realpathMaybe(mkdtempSync(join(tmpdir(), 'lanes-test-')));
+  const root = realpathMaybe(mkdtempSync(join(tmpdir(), 'braid-test-')));
   const main = join(root, 'repo');
   mkdirSync(main);
   await git(['init', '-q', '-b', 'main'], { cwd: main });
