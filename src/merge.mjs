@@ -1,8 +1,11 @@
 import { IDENTITY, git, out } from './git.mjs';
+import { applyResolution, conflictKey, loadResolution, parseStages } from './resolve.mjs';
 
 // Merge each lane onto the base in order, entirely in memory. A lane that
-// conflicts (or fails to merge) is left out and the rest still integrate.
-export async function integrate(cwd, baseCommit, lanes) {
+// conflicts uses a cached resolution when one exists for exactly that
+// collision; otherwise it is left out (with what's needed to resolve it) and
+// the rest still integrate.
+export async function integrate(cwd, baseCommit, lanes, { repo } = {}) {
   let commit = baseCommit;
   let tree = await out(['rev-parse', `${baseCommit}^{tree}`], { cwd });
   const results = [];
@@ -23,16 +26,23 @@ export async function integrate(cwd, baseCommit, lanes) {
     }
     let merged;
     try {
-      merged = await git(['merge-tree', '--write-tree', '--name-only', '--no-messages', commit, lane.commit], { cwd, ok: [0, 1] });
+      merged = await git(['merge-tree', '--write-tree', '--no-messages', commit, lane.commit], { cwd, ok: [0, 1] });
     } catch (error) {
       results.push({ ...entry, status: 'error', reason: (error.stderr || error.message).trim().split('\n')[0] });
       continue;
     }
-    const [mergedTree, ...rest] = merged.stdout.split('\n');
+    let [mergedTree, ...rest] = merged.stdout.split('\n');
     if (merged.code === 1) {
-      const conflicts = [...new Set(rest.map((line) => line.trim()).filter(Boolean))];
-      results.push({ ...entry, status: 'excluded', reason: 'conflict', conflicts });
-      continue;
+      const stages = parseStages(rest);
+      const conflicts = [...new Set(stages.map((s) => s.path))];
+      const key = conflictKey(stages);
+      const resolution = repo && loadResolution(repo, key);
+      if (!resolution) {
+        results.push({ ...entry, status: 'excluded', reason: 'conflict', conflicts, resolve: { key, ours: commit, theirs: lane.commit } });
+        continue;
+      }
+      mergedTree = await applyResolution(repo, mergedTree.trim(), resolution);
+      entry.resolved = conflicts;
     }
     if (mergedTree.trim() !== tree) {
       tree = mergedTree.trim();

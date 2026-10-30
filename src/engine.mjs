@@ -9,12 +9,13 @@ import { AppRunner, runCommand } from './runner.mjs';
 import { AnyshipDeployer } from './anyship.mjs';
 import { expandScript, portlessCommand, portlessName, portlessUrl } from './portless.mjs';
 import { syncPullRequests } from './prs.mjs';
+import { Resolver } from './resolve.mjs';
 import { isPaused, matchesOff, readOff, readStatus, remotePatterns, summarize, writeStatus } from './status.mjs';
 
 const stamp = () => new Date().toLocaleTimeString();
 
 export class Engine {
-  constructor(repo, config, { log = console.log, appLog, run = true, update = true, deploy = false } = {}) {
+  constructor(repo, config, { log = console.log, appLog, run = true, update = true, deploy = false, resolveConflicts = deploy } = {}) {
     this.repo = repo;
     this.config = config;
     this.log = (msg) => log(`[gitweave ${stamp()}] ${msg}`);
@@ -36,6 +37,10 @@ export class Engine {
     this.signature = null;
     this.runner = run && config.run && update
       ? new AppRunner(config.run, config.previewPath, { onLine: (line) => this.onAppLine(line), onState: (s) => this.onAppState(s) })
+      : null;
+    // Conflicting lanes are resolved in the background; the next pass applies the result.
+    this.resolver = resolveConflicts && config.resolve && update
+      ? new Resolver(repo, config, { log: this.log, onDone: () => this.trigger({ force: true }) })
       : null;
     this.deployer = deploy && config.anyship && update
       ? new AnyshipDeployer(repo, config, {
@@ -104,7 +109,16 @@ export class Engine {
     this.lastKey = key;
     this.cycles++;
 
-    const result = await integrate(repo.main, base, lanes);
+    const result = await integrate(repo.main, base, lanes, { repo });
+    for (const lane of result.lanes) {
+      if (!lane.resolve) continue;
+      const { key, ours, theirs } = lane.resolve;
+      delete lane.resolve;
+      if (!this.resolver) continue;
+      this.resolver.request({ key, lane: lane.name, ours, theirs, paths: lane.conflicts });
+      const state = this.resolver.status(key);
+      if (state) lane.resolving = state.state === 'failed' ? { state: 'failed', reason: state.reason } : { state: 'resolving' };
+    }
     const status = {
       updatedAt: new Date().toISOString(),
       base: { name: config.base, commit: base },
@@ -187,6 +201,8 @@ export class Engine {
     if (this.stopped) return;
     if (this.running) {
       this.pending = true;
+      // A forced follow-up (e.g. a resolution just landed) must stay forced.
+      this.pendingForce ||= Boolean(opts?.force);
       return;
     }
     this.running = true;
@@ -198,8 +214,10 @@ export class Engine {
       this.running = false;
     }
     if (this.pending && !this.stopped) {
+      const force = this.pendingForce;
       this.pending = false;
-      await this.trigger();
+      this.pendingForce = false;
+      await this.trigger({ force });
     }
   }
 
@@ -323,6 +341,7 @@ export class Engine {
     this.timers = [];
     for (const watcher of this.watchers.values()) watcher.close();
     this.watchers.clear();
+    await this.resolver?.stop();
     while (this.running) await new Promise((r) => setTimeout(r, 20));
     await this.deployer?.stop();
     if (this.runner) {

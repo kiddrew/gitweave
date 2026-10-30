@@ -9,11 +9,12 @@ const ZERO = /^0+$/;
 // Every worktree (except the preview) is a lane, plus remote branches matching
 // the configured patterns. Order is fixed so merges are reproducible.
 export async function discoverLanes(repo, config) {
-  const preview = realpathMaybe(config.previewPath);
+  // gitweave's own worktrees (the preview and the conflict resolver's) are not lanes.
+  const own = new Set([config.previewPath, `${config.previewPath}-resolve`].map(realpathMaybe));
   const local = [];
   for (const wt of await listWorktrees(repo.main)) {
     if (wt.bare || wt.prunable || !wt.head || ZERO.test(wt.head)) continue;
-    if (realpathMaybe(wt.path) === preview) continue;
+    if (own.has(realpathMaybe(wt.path))) continue;
     const name = wt.branch ? wt.branch.replace(/^refs\/heads\//, '') : `@${basename(wt.path)}`;
     local.push({ kind: 'worktree', name, path: wt.path, main: wt.path === repo.main });
   }

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { git, out } from './git.mjs';
+import { DEFAULT_RESOLVER } from './resolve.mjs';
 import { listWorktrees, realpathMaybe } from './repo.mjs';
 
 export const CONFIG_FILE = 'gitweave.json';
@@ -23,6 +24,8 @@ export const DEFAULTS = {
   fetchIntervalSec: 60,
   staleDays: 30,
   prs: true,
+  resolve: true,
+  resolveCommand: DEFAULT_RESOLVER,
   portless: true,
   anyship: false,
   anyshipReviewApp: 'integration',
@@ -62,6 +65,7 @@ export async function loadConfig(repo, overrides = {}) {
   const fromFile = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
   const config = { ...DEFAULTS, ...fromFile, ...overrides };
   config.base ||= await detectBase(repo.main);
+  if (process.env.GITWEAVE_RESOLVE_CMD) config.resolveCommand = process.env.GITWEAVE_RESOLVE_CMD;
   config.previewPath = resolve(repo.main, expandHome(config.previewPath || (await legacyPreviewPath(repo)) || defaultPreviewPath(repo)));
   await out(['rev-parse', '--verify', `${config.base}^{commit}`], { cwd: repo.main }).catch(() => {
     throw new Error(`Base "${config.base}" does not resolve to a commit.`);

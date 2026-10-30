@@ -13,15 +13,17 @@ Requires Node 20+ and git 2.38+. No dependencies.
 ```sh
 cd your-repo
 node path/to/gitweave/bin/gitweave.mjs init   # writes gitweave.json, creates the preview worktree in ~/.gitweave/<repo>-<id>/preview
-node path/to/gitweave/bin/gitweave.mjs up     # watch, merge, run the app
+node path/to/gitweave/bin/gitweave.mjs up     # start in the background: watch, merge, run the app
 ```
 
 | Command | What it does |
 | --- | --- |
 | `gitweave init` | Writes `gitweave.json` guessed from the project and creates the preview worktree |
-| `gitweave up [--no-run] [--anyship]` | Watches every worktree, keeps the preview merged, runs and supervises the app; `--anyship` also deploys it (see below) |
+| `gitweave up [--no-run] [--anyship] [--foreground]` | Starts in the background (one per repo) and prints the first result and URL: watches every worktree, keeps the preview merged, runs and supervises the app, resolves conflicts. `--anyship` also deploys it (see below); `--foreground` keeps it in the terminal |
+| `gitweave down` | Stops the background gitweave |
+| `gitweave logs [-f]` | Shows (or follows) its log, `.git/gitweave/up.log` |
 | `gitweave merge [--dry-run] [--json]` | One merge, then exit (exit code 1 if any lane was excluded) |
-| `gitweave list [--json]` (or `ls`) | Every lane with its state (`live`, `conflict`, `error`, `off`, `stale`, `pending`) and source worktree or remote branch |
+| `gitweave list [--json]` (or `ls`) | Every lane with its state (`live`, `resolving`, `conflict`, `error`, `off`, `stale`, `pending`) and source worktree or remote branch |
 | `gitweave add <branch...>` / `gitweave add --all` | Include remote branches as lanes: `feature-x` (on origin), `origin/feature-x`, or globs like `'origin/claude/*'`. `--all` includes every remote branch. Globs cover branches pushed later; they appear within `fetchIntervalSec` |
 | `gitweave remove <branch...>` / `gitweave remove --all` | Stop including remote branches added with `add` |
 | `gitweave off <lane...>` | Take lanes out of the preview, e.g. one that's broken. Accepts globs like `'origin/claude/*'`, which also cover lanes that appear later |
@@ -43,6 +45,8 @@ Never edit files in the preview worktree; every update resets it.
 | `installOn` | lockfiles, `package.json` | File names that trigger `install` |
 | `remotePatterns` | `[]` | Remote branches always included as lanes, on top of those added with `gitweave add` (fetched every `fetchIntervalSec`). Branches already merged into the base are skipped |
 | `staleDays` | 30 | Remote branches with no commits in this many days are skipped and shown as `stale` in `list` (`0` includes them all) |
+| `resolve` | `true` | Resolve conflicting lanes automatically (see below) |
+| `resolveCommand` | `claude -p …` | Command that resolves the conflicts; it runs in a private worktree with `$GITWEAVE_PROMPT`, `$GITWEAVE_FILES` and `$GITWEAVE_LANE` set |
 | `order` | `[]` | Lane names merged first, in this order. Then the main worktree, other worktrees, remotes, alphabetically |
 | `ignore` | `node_modules`, build dirs | Path segments whose changes don't trigger a merge |
 | `copy` | `.env`, `.env.local`, `.dev.vars`, `pnpm-workspace.yaml`, `.npmrc` | Files copied from the main worktree into the preview when git doesn't track them (e.g. pnpm build approvals kept in an uncommitted `pnpm-workspace.yaml`) |
@@ -52,6 +56,15 @@ Never edit files in the preview worktree; every update resets it.
 | `anyship` | `false` | Deploy the merged preview to Anyship while `up` runs (also `up --anyship`) |
 | `anyshipReviewApp` | `integration` | Suffix of the Anyship project the preview deploys to: `<app>-<suffix>` |
 | `anyshipDebounceSec` | 30 | Quiet period after the last merge before deploying |
+
+## Conflict resolution
+
+When a lane conflicts with the lanes before it, gitweave leaves it out for the moment (`resolving` in `list`) and resolves it in the background:
+
+- The lane is merged for real in a private worktree next to the preview (`<previewPath>-resolve`), and `resolveCommand` (by default the Claude Code CLI, `claude -p`, allowed only to read and edit files) fixes the conflict markers, keeping both sides' intent.
+- The resolved files are cached under `.git/gitweave/resolutions/`, keyed by exactly what collided (each conflicted file's base, ours and theirs). The next merge applies them in memory and the lane goes `live`, with the resolved files listed. Edits elsewhere reuse the cache; a new collision in those files is resolved again.
+- One resolution runs at a time. If it fails or leaves markers, the lane stays out with the reason in `list`, and isn't retried until the conflict changes (or gitweave restarts).
+- Source worktrees and branches are never touched; the resolution exists only in the preview. Set `"resolve": false` to only report conflicts.
 
 ## Anyship
 
@@ -73,7 +86,6 @@ With `anyship` on, `gitweave up` deploys the combined preview to its own Anyship
 
 ## Not yet
 
-- AI conflict resolution (conflicting lanes are only excluded). Note `git rerere` doesn't apply to in-memory merges.
 - Running tests before the preview updates.
 - A banner in the page showing which lanes are included.
 - Windows: the app's process group isn't killed as a tree.
