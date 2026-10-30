@@ -20,14 +20,14 @@ test('portless: the app runs under a stable .localhost name shown in status', as
     cleanup();
   });
   await engine.start();
-  const name = `gitweave.${basename(repo.main)}`;
+  const name = `${basename(repo.main)}.gitweave`;
   await waitFor(() => read(join(config.previewPath, 'ran.txt')).endsWith('\n'));
   assert.equal(read(join(config.previewPath, 'ran.txt')), `${name} 4321\n`);
   assert.equal(readStatus(repo).local, `https://${name}.localhost`);
 });
 
 test('portless: a configured name is used and sanitized; a missing binary falls back to the plain app', async (t) => {
-  assert.equal(portlessName({ main: '/x/My Repo' }, { portless: true }), 'gitweave.my-repo');
+  assert.equal(portlessName({ main: '/x/My Repo' }, { portless: true }), 'my-repo.gitweave');
   assert.equal(portlessName({ main: '/x/r' }, { portless: 'Team.App' }), 'team.app');
 
   const { repo, config, cleanup } = await setup(undefined, { portless: true, run: 'echo "${PORT:-none}" > ran.txt; sleep 30' });

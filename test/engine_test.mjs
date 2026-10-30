@@ -277,3 +277,44 @@ test('remote branches with no recent commits are listed as stale and left out', 
   assert.ok(!existsSync(join(config.previewPath, 'old-work.txt')));
   assert.ok(existsSync(join(config.previewPath, 'fresh-work.txt')));
 });
+
+test('open non-draft pull requests are lanes; drafts and checked-out branches are not', async (t) => {
+  const { repo, config, main, root, cleanup } = await setup();
+  t.after(cleanup);
+  const origin = join(root, 'origin.git');
+  await git(['init', '-q', '--bare', origin], { cwd: root });
+  await git(['remote', 'add', 'origin', origin], { cwd: main });
+  await git(['push', '-q', 'origin', 'main'], { cwd: main });
+  const clone = join(root, 'cloud');
+  await git(['clone', '-q', origin, clone], { cwd: root });
+  // GitHub publishes each PR's head as refs/pull/<n>/head.
+  for (const [n, branch] of [[7, 'ready'], [8, 'draft'], [9, 'mine']]) {
+    await git(['checkout', '-q', '-B', branch, 'origin/main'], { cwd: clone });
+    write(join(clone, `${branch}.txt`), 'x\n');
+    await git(['add', '-A'], { cwd: clone });
+    await git(['-c', 'user.name=c', '-c', 'user.email=c@x', 'commit', '-q', '-m', branch], { cwd: clone });
+    await git(['push', '-q', 'origin', `${branch}:refs/pull/${n}/head`, branch], { cwd: clone });
+  }
+  await git(['fetch', '-q', 'origin', 'mine'], { cwd: main });
+  await git(['worktree', 'add', '-q', join(root, 'mine'), 'FETCH_HEAD', '-b', 'mine'], { cwd: main });
+  process.env.FAKE_GH_PRS = JSON.stringify([
+    { number: 7, title: 'Ready', headRefName: 'ready', isDraft: false, isCrossRepository: false },
+    { number: 8, title: 'WIP', headRefName: 'draft', isDraft: true, isCrossRepository: false },
+    { number: 9, title: 'Mine', headRefName: 'mine', isDraft: false, isCrossRepository: false },
+  ]);
+  const engine = new Engine(repo, { ...config, remotePatterns: ['origin/*'] }, { ...quiet, run: false });
+  await engine.fetch();
+  const status = await engine.cycle({ force: true });
+  const names = status.lanes.map((l) => l.name);
+  assert.ok(names.includes('pr/7'), names.join(','));
+  assert.ok(!names.includes('pr/8') && !names.includes('pr/9'), names.join(','));
+  assert.ok(!names.includes('origin/ready'), 'the PR stands in for its branch');
+  assert.ok(names.includes('mine'));
+  assert.ok(existsSync(join(config.previewPath, 'ready.txt')));
+  assert.ok(!existsSync(join(config.previewPath, 'draft.txt')) || names.includes('origin/draft'));
+
+  // Closing the PR removes its lane on the next sync.
+  process.env.FAKE_GH_PRS = '[]';
+  await engine.fetch();
+  assert.equal(await out(['for-each-ref', 'refs/gitweave/pr/'], { cwd: main }), '');
+});

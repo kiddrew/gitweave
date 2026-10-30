@@ -149,7 +149,8 @@ async function main(argv) {
         : 'error';
       const detail = state === 'conflict' ? last.conflicts.join(', ') : state === 'error' ? last.reason
         : state === 'stale' ? `skipped: last commit ${lane.ageDays} days ago` : '';
-      return { name: lane.name, state, kind: lane.kind, source: lane.path || lane.ref.replace(/^refs\/remotes\//, 'remote '), detail };
+      const source = lane.path || (lane.kind === 'pr' ? `PR #${lane.number} ${lane.branch}: ${lane.title}` : lane.ref.replace(/^refs\/remotes\//, 'remote '));
+      return { name: lane.name, state, kind: lane.kind, source, detail };
     });
     if (flags.has('--json')) {
       console.log(JSON.stringify(rows, null, 2));

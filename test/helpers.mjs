@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -36,6 +37,9 @@ export async function setup(files, overrides = {}) {
   const fixture = await makeRepo(files);
   // Keep previews (default ~/.gitweave) inside the fixture's temp folder.
   process.env.GITWEAVE_HOME = join(fixture.root, 'gitweave-home');
+  // Never ask the real GitHub about pull requests.
+  process.env.GITWEAVE_GH_BIN = fileURLToPath(new URL('./fixtures/fake-gh.mjs', import.meta.url));
+  delete process.env.FAKE_GH_PRS;
   const repo = await openRepo(fixture.main);
   const config = await loadConfig(repo, { settleMs: 100, pollMs: 200, ...overrides });
   return { ...fixture, repo, config };

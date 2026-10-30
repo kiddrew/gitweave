@@ -22,6 +22,7 @@ export const DEFAULTS = {
   pollMs: 2000,
   fetchIntervalSec: 60,
   staleDays: 30,
+  prs: true,
   portless: false,
   anyship: false,
   anyshipReviewApp: 'integration',

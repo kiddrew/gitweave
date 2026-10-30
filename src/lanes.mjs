@@ -2,6 +2,7 @@ import { basename } from 'node:path';
 import { git, out } from './git.mjs';
 import { listWorktrees, realpathMaybe } from './repo.mjs';
 import { remotePatterns } from './status.mjs';
+import { prRef, readPullRequests } from './prs.mjs';
 
 const ZERO = /^0+$/;
 
@@ -35,8 +36,24 @@ export async function discoverLanes(repo, config) {
     }
   }
 
+  // Open, non-draft PRs (on by default). A PR whose branch is checked out here
+  // is already a worktree lane (with uncommitted edits), and its branch on the
+  // remote is the same work, so neither is listed twice.
+  const prs = [];
+  if (config.prs) {
+    const checkedOut = new Set(local.map((l) => l.name));
+    for (const pr of readPullRequests(repo)) {
+      if (!pr.fork && checkedOut.has(pr.branch)) continue;
+      prs.push({ kind: 'pr', name: `pr/${pr.number}`, ref: prRef(pr.number), number: pr.number, title: pr.title, branch: pr.branch });
+      if (!pr.fork) {
+        const dup = remote.findIndex((l) => l.name.endsWith(`/${pr.branch}`) && l.name.split('/').length === pr.branch.split('/').length + 1);
+        if (dup !== -1) remote.splice(dup, 1);
+      }
+    }
+  }
+
   const seen = new Map();
-  const lanes = [...local, ...remote].map((lane) => {
+  const lanes = [...local, ...prs, ...remote].map((lane) => {
     const count = (seen.get(lane.name) || 0) + 1;
     seen.set(lane.name, count);
     return count === 1 ? lane : { ...lane, name: `${lane.name}#${count}` };
@@ -46,7 +63,7 @@ export async function discoverLanes(repo, config) {
     const pinned = config.order.indexOf(lane.name);
     if (pinned !== -1) return [0, pinned];
     if (lane.main) return [1, 0];
-    return [lane.kind === 'worktree' ? 2 : 3, 0];
+    return [lane.kind === 'worktree' ? 2 : lane.kind === 'pr' ? 3 : 4, lane.number || 0];
   };
   return lanes.sort((a, b) => {
     const [ra, ia] = rank(a);

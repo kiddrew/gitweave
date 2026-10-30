@@ -8,6 +8,7 @@ import { ensurePreview, updatePreview } from './preview.mjs';
 import { AppRunner, runCommand } from './runner.mjs';
 import { AnyshipDeployer } from './anyship.mjs';
 import { portlessCommand, portlessName, portlessUrl } from './portless.mjs';
+import { syncPullRequests } from './prs.mjs';
 import { isPaused, matchesOff, readOff, readStatus, remotePatterns, summarize, writeStatus } from './status.mjs';
 
 const stamp = () => new Date().toLocaleTimeString();
@@ -70,7 +71,7 @@ export class Engine {
       }
       if (lane.stale) continue;
       try {
-        if (lane.kind === 'remote') Object.assign(lane, await resolveRemote(repo, lane));
+        if (lane.kind === 'remote' || lane.kind === 'pr') Object.assign(lane, await resolveRemote(repo, lane));
         else if (this.allDirty || this.dirty.has(lane.name) || !this.snapshots.has(lane.name)) {
           const snap = await snapshotWorktree(repo, lane, this.snapshots.get(lane.name));
           this.snapshots.set(lane.name, snap);
@@ -236,6 +237,7 @@ export class Engine {
     ];
     const patterns = remotePatterns(this.repo, this.config);
     parts.push(patterns.join('\n'));
+    parts.push(await out(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/gitweave/pr/'], { cwd: this.repo.main }));
     for (const pattern of patterns) {
       parts.push(await out(['for-each-ref', '--format=%(refname) %(objectname)', `refs/remotes/${pattern}`], { cwd: this.repo.main }));
     }
@@ -256,6 +258,16 @@ export class Engine {
   }
 
   async fetch() {
+    if (this.config.prs) {
+      try {
+        await syncPullRequests(this.repo);
+        this.prError = null;
+      } catch (error) {
+        // Usually gh missing or signed out, or a repo not on GitHub; say so once.
+        if (this.prError !== error.message) this.log(`pull requests unavailable: ${error.message}`);
+        this.prError = error.message;
+      }
+    }
     if (!remotePatterns(this.repo, this.config).length) return;
     const { code, stderr } = await git(['fetch', '--all', '--prune', '--quiet'], { cwd: this.repo.main, ok: [0, 1, 128] });
     if (code !== 0) this.log(`fetch failed: ${stderr.trim().split('\n')[0]}`);

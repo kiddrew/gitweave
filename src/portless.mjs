@@ -3,10 +3,10 @@ import { basename } from 'node:path';
 
 const bin = () => process.env.GITWEAVE_PORTLESS_BIN || 'portless';
 
-// `true` names the preview gitweave.<repo>, beside portless's own <repo> and
-// <worktree>.<repo> names for the checkouts; a string picks the name.
+// `true` names the preview <repo>.gitweave, so every repo's preview sits under
+// gitweave.localhost; a string picks the name.
 export function portlessName(repo, config) {
-  const raw = typeof config.portless === 'string' ? config.portless : `gitweave.${basename(repo.main)}`;
+  const raw = typeof config.portless === 'string' ? config.portless : `${basename(repo.main)}.gitweave`;
   return raw.toLowerCase().replace(/[^a-z0-9.-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '');
 }
 
