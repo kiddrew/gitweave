@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
-import { out } from './git.mjs';
+import { git, out } from './git.mjs';
 import { listWorktrees, realpathMaybe } from './repo.mjs';
+import { remotePatterns } from './status.mjs';
 
 const ZERO = /^0+$/;
 
@@ -17,10 +18,14 @@ export async function discoverLanes(repo, config) {
   }
 
   const remote = [];
-  for (const pattern of config.remotePatterns) {
+  for (const pattern of remotePatterns(repo, config)) {
     const refs = await out(['for-each-ref', '--format=%(refname)', `refs/remotes/${pattern}`], { cwd: repo.main });
     for (const ref of refs.split('\n').filter(Boolean)) {
       if (ref.endsWith('/HEAD')) continue;
+      // Already merged into the base (or the base itself): nothing to preview.
+      if (config.base && ref === `refs/remotes/${config.base}`) continue;
+      const merged = await git(['merge-base', '--is-ancestor', ref, config.base], { cwd: repo.main, ok: [0, 1] });
+      if (merged.code === 0) continue;
       remote.push({ kind: 'remote', name: ref.slice('refs/remotes/'.length), ref });
     }
   }

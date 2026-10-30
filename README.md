@@ -22,6 +22,8 @@ node path/to/gitweave/bin/gitweave.mjs up     # watch, merge, run the app
 | `gitweave up [--no-run] [--anyship]` | Watches every worktree, keeps the preview merged, runs and supervises the app; `--anyship` also deploys it (see below) |
 | `gitweave merge [--dry-run] [--json]` | One merge, then exit (exit code 1 if any lane was excluded) |
 | `gitweave list [--json]` (or `ls`) | Every lane with its state (`live`, `conflict`, `error`, `off`, `pending`) and source worktree or remote branch |
+| `gitweave add <branch...>` / `gitweave add --all` | Include remote branches as lanes: `feature-x` (on origin), `origin/feature-x`, or globs like `'origin/claude/*'`. `--all` includes every remote branch. Globs cover branches pushed later; they appear within `fetchIntervalSec` |
+| `gitweave remove <branch...>` / `gitweave remove --all` | Stop including remote branches added with `add` |
 | `gitweave off <lane...>` | Take lanes out of the preview, e.g. one that's broken. Accepts globs like `'origin/claude/*'`, which also cover lanes that appear later |
 | `gitweave on <lane...>` / `gitweave on --all` | Put lanes back in |
 | `gitweave status [--json]` | Last result: included and excluded lanes, conflicting files, build state, local URL, last Anyship deploy |
@@ -39,7 +41,7 @@ Never edit files in the preview worktree; every update resets it.
 | `rebuild` | none | Run after each update (compiled stacks). On failure the previous app keeps running; on success the app restarts |
 | `install` | guessed | Run when the preview is created or a dependency file changes; the app restarts afterwards |
 | `installOn` | lockfiles, `package.json` | File names that trigger `install` |
-| `remotePatterns` | `[]` | Remote branches to include as lanes, e.g. `["origin/claude/*"]` (fetched every `fetchIntervalSec`) |
+| `remotePatterns` | `[]` | Remote branches always included as lanes, on top of those added with `gitweave add` (fetched every `fetchIntervalSec`). Branches already merged into the base are skipped |
 | `order` | `[]` | Lane names merged first, in this order. Then the main worktree, other worktrees, remotes, alphabetically |
 | `ignore` | `node_modules`, build dirs | Path segments whose changes don't trigger a merge |
 | `copy` | `.env`, `.env.local`, `.dev.vars`, `pnpm-workspace.yaml`, `.npmrc` | Files copied from the main worktree into the preview when git doesn't track them (e.g. pnpm build approvals kept in an uncommitted `pnpm-workspace.yaml`) |
@@ -65,7 +67,7 @@ With `anyship` on, `gitweave up` deploys the combined preview to its own Anyship
 - **Merge**: starting from the base, each lane is merged in order with `git merge-tree --write-tree` (in memory). Conflicting lanes are skipped.
 - **Preview**: `git reset --hard <merged>` in the preview worktree rewrites only changed files and leaves ignored folders (`node_modules`, build caches) alone.
 - **Triggers**: recursive file watching on each worktree (settled), plus polling for base moves, worktrees added/removed, remote refs and pause.
-- **Status**: `.git/gitweave/status.json` (including the last Anyship deploy). Lanes switched off are stored in `.git/gitweave/off.json`, so the choice survives restarts and a running `gitweave up` notices within `pollMs`.
+- **Status**: `.git/gitweave/status.json` (including the last Anyship deploy). Lanes switched off are stored in `.git/gitweave/off.json` and branches added with `add` in `.git/gitweave/remotes.json`, so the choice survives restarts and a running `gitweave up` notices within `pollMs`.
 
 ## Not yet
 

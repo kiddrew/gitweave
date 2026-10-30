@@ -8,7 +8,7 @@ import { ensurePreview, updatePreview } from './preview.mjs';
 import { AppRunner, runCommand } from './runner.mjs';
 import { AnyshipDeployer } from './anyship.mjs';
 import { portlessCommand, portlessName, portlessUrl } from './portless.mjs';
-import { isPaused, matchesOff, readOff, readStatus, summarize, writeStatus } from './status.mjs';
+import { isPaused, matchesOff, readOff, readStatus, remotePatterns, summarize, writeStatus } from './status.mjs';
 
 const stamp = () => new Date().toLocaleTimeString();
 
@@ -233,7 +233,9 @@ export class Engine {
       String(isPaused(this.repo)),
       readOff(this.repo).join('\n'),
     ];
-    for (const pattern of this.config.remotePatterns) {
+    const patterns = remotePatterns(this.repo, this.config);
+    parts.push(patterns.join('\n'));
+    for (const pattern of patterns) {
       parts.push(await out(['for-each-ref', '--format=%(refname) %(objectname)', `refs/remotes/${pattern}`], { cwd: this.repo.main }));
     }
     return parts.join('\n');
@@ -253,6 +255,7 @@ export class Engine {
   }
 
   async fetch() {
+    if (!remotePatterns(this.repo, this.config).length) return;
     const { code, stderr } = await git(['fetch', '--all', '--prune', '--quiet'], { cwd: this.repo.main, ok: [0, 1, 128] });
     if (code !== 0) this.log(`fetch failed: ${stderr.trim().split('\n')[0]}`);
   }
@@ -278,7 +281,8 @@ export class Engine {
     await this.trigger({ force: true });
     if (this.runner && !this.runner.child && this.build.state !== 'failed') this.runner.start();
     this.timers.push(setInterval(() => this.poll(), this.config.pollMs));
-    if (this.config.remotePatterns.length && this.config.fetchIntervalSec > 0) {
+    // Always armed: `gitweave add` can introduce remote lanes while this runs.
+    if (this.config.fetchIntervalSec > 0) {
       this.fetch().then(() => this.poll());
       this.timers.push(setInterval(() => this.fetch().then(() => this.poll()), this.config.fetchIntervalSec * 1000));
     }

@@ -5,10 +5,10 @@ import { CONFIG_FILE, loadConfig, suggestConfig } from '../src/config.mjs';
 import { Engine } from '../src/engine.mjs';
 import { copyLocalFiles, ensurePreview } from '../src/preview.mjs';
 import { openRepo } from '../src/repo.mjs';
-import { anyshipLine, matchesOff, readOff, readStatus, setPaused, summarize, writeOff } from '../src/status.mjs';
+import { anyshipLine, matchesOff, readOff, readRemotes, readStatus, setPaused, summarize, writeOff, writeRemotes } from '../src/status.mjs';
 import { discoverLanes } from '../src/lanes.mjs';
 import { runCommand } from '../src/runner.mjs';
-import { out } from '../src/git.mjs';
+import { git, out } from '../src/git.mjs';
 
 const HELP = `gitweave: a live preview of every git worktree merged together
 
@@ -20,6 +20,9 @@ Commands:
   merge           Merge once and update the preview, then exit
   status          Show the last merge result
   list | ls       Show every lane: live, conflict, off or pending, and where it comes from
+  add <branch...> Include remote branches as lanes ('feature-x', 'origin/feature-x' or globs like 'origin/claude/*');
+                  --all includes every remote branch, and new ones as they're pushed
+  remove <branch...>  Stop including remote branches added with \`add\` (--all removes every remote glob)
   off <lane...>   Take lanes out of the preview (names or globs like 'origin/claude/*')
   on <lane...>    Put lanes back in (--all turns every lane back on)
   pause | resume  Stop or restart updating the preview and Anyship deploys (while \`up\` keeps running)
@@ -83,6 +86,39 @@ async function main(argv) {
   }
 
   const config = await loadConfig(repo, command === 'up' && flags.has('--anyship') ? { anyship: true } : {});
+
+  if (command === 'add' || command === 'remove' || command === 'rm') {
+    const remotes = (await out(['remote'], { cwd: repo.main })).split('\n').filter(Boolean);
+    if (!remotes.length) throw new Error('This repository has no remotes.');
+    // --all: every branch on every remote, including ones pushed later.
+    const names = flags.has('--all') ? remotes.map((r) => `${r}/*`) : rest.filter((a) => !a.startsWith('--'));
+    if (!names.length) throw new Error(`Name at least one remote branch to ${command === 'add' ? 'add' : 'remove'}, or pass --all.`);
+    // `feature-x` means the branch on origin (or the only remote).
+    const fallback = remotes.includes('origin') ? 'origin' : remotes[0];
+    const qualify = (name) => (remotes.some((r) => name.startsWith(`${r}/`)) ? name : `${fallback}/${name}`);
+    const patterns = names.map(qualify);
+    if (command === 'add') {
+      writeRemotes(repo, [...readRemotes(repo), ...patterns]);
+      for (const remote of new Set(patterns.map((p) => p.split('/')[0]))) {
+        const { code, stderr } = await git(['fetch', '--prune', '--quiet', remote], { cwd: repo.main, ok: [0, 1, 128] });
+        if (code !== 0) console.log(`fetch ${remote} failed: ${stderr.trim().split('\n')[0]}`);
+      }
+      for (const pattern of patterns) {
+        const refs = await out(['for-each-ref', '--format=%(refname)', `refs/remotes/${pattern}`], { cwd: repo.main });
+        console.log(refs ? `added ${pattern}` : `added ${pattern} (no such branch yet; it will apply once one is pushed)`);
+      }
+    } else {
+      const stored = readRemotes(repo);
+      writeRemotes(repo, stored.filter((entry) => !patterns.includes(entry)));
+      for (const pattern of patterns) {
+        if (stored.includes(pattern)) console.log(`removed ${pattern}`);
+        else if (config.remotePatterns.includes(pattern)) console.log(`${pattern} comes from "remotePatterns" in ${CONFIG_FILE}; remove it there.`);
+        else console.log(`${pattern} wasn't added.`);
+      }
+    }
+    console.log('A running `gitweave up` picks this up within a couple of seconds.');
+    return 0;
+  }
 
   if (command === 'list' || command === 'ls' || command === 'on' || command === 'off') {
     const names = rest.filter((a) => !a.startsWith('--'));

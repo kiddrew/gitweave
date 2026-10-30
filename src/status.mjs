@@ -36,6 +36,24 @@ export function matchesOff(name, entries) {
     || (entry.includes('*') && new RegExp(`^${entry.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`).test(name)));
 }
 
+export const remotesFile = (repo) => join(repo.stateDir, 'remotes.json');
+
+// Remote branches added with `gitweave add` (names or `*` globs), on top of
+// "remotePatterns" in gitweave.json.
+export function readRemotes(repo) {
+  const file = remotesFile(repo);
+  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : [];
+}
+
+export function writeRemotes(repo, entries) {
+  const unique = [...new Set(entries)].sort();
+  if (unique.length) writeFileSync(remotesFile(repo), JSON.stringify(unique, null, 2));
+  else rmSync(remotesFile(repo), { force: true });
+  return unique;
+}
+
+export const remotePatterns = (repo, config) => [...new Set([...config.remotePatterns, ...readRemotes(repo)])];
+
 export const isPaused = (repo) => existsSync(pauseFile(repo));
 export const setPaused = (repo, paused) => (paused ? writeFileSync(pauseFile(repo), new Date().toISOString()) : rmSync(pauseFile(repo), { force: true }));
 

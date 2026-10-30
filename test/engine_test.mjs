@@ -4,7 +4,7 @@ import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { git, out } from '../src/git.mjs';
 import { Engine } from '../src/engine.mjs';
-import { matchesOff, readStatus, setPaused, writeOff } from '../src/status.mjs';
+import { matchesOff, readStatus, setPaused, writeOff, writeRemotes } from '../src/status.mjs';
 import { addWorktree, fingerprint, read, setup, waitFor, write } from './helpers.mjs';
 
 const quiet = { log: () => {}, appLog: () => {} };
@@ -215,4 +215,36 @@ test('a failed install is retried on the next pass', async (t) => {
   engine.allDirty = true;
   await engine.cycle();
   assert.equal(engine.build.state, 'ok');
+});
+
+test('remote globs added at runtime pick up branches pushed later; merged ones are skipped', async (t) => {
+  const { repo, config, main, root, cleanup } = await setup(undefined, { fetchIntervalSec: 0.3 });
+  const origin = join(root, 'origin.git');
+  await git(['init', '-q', '--bare', origin], { cwd: root });
+  await git(['remote', 'add', 'origin', origin], { cwd: main });
+  await git(['push', '-q', 'origin', 'main'], { cwd: main });
+  const clone = join(root, 'cloud');
+  await git(['clone', '-q', origin, clone], { cwd: root });
+  const push = async (branch, file) => {
+    await git(['checkout', '-q', '-B', branch, 'origin/main'], { cwd: clone });
+    if (file) {
+      write(join(clone, file), `${branch}\n`);
+      await git(['add', '-A'], { cwd: clone });
+      await git(['-c', 'user.name=c', '-c', 'user.email=c@x', 'commit', '-q', '-m', branch], { cwd: clone });
+    }
+    await git(['push', '-q', 'origin', branch], { cwd: clone });
+  };
+  await push('already-merged');
+  const engine = new Engine(repo, config, { ...quiet, run: false });
+  t.after(async () => {
+    await engine.stop();
+    cleanup();
+  });
+  await engine.start();
+  writeRemotes(repo, ['origin/*']);
+  await push('new-work', 'new.txt');
+  await waitFor(() => existsSync(join(config.previewPath, 'new.txt')));
+  const names = readStatus(repo).lanes.map((l) => l.name);
+  assert.ok(names.includes('origin/new-work'));
+  assert.ok(!names.includes('origin/already-merged') && !names.includes('origin/main'), names.join(','));
 });
