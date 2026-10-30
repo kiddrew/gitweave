@@ -23,12 +23,11 @@ node path/to/gitweave/bin/gitweave.mjs up     # start in the background: watch, 
 | `gitweave down` | Stops the background gitweave |
 | `gitweave logs [-f]` | Shows (or follows) its log, `.git/gitweave/up.log` |
 | `gitweave merge [--dry-run] [--json]` | One merge, then exit (exit code 1 if any lane was excluded) |
-| `gitweave list [--json]` (or `ls`) | Every lane with its state (`live`, `resolving`, `conflict`, `error`, `off`, `stale`, `pending`) and source worktree or remote branch |
 | `gitweave add <branch...>` / `gitweave add --all` | Include remote branches as lanes: `feature-x` (on origin), `origin/feature-x`, or globs like `'origin/claude/*'`. `--all` includes every remote branch. Globs cover branches pushed later; they appear within `fetchIntervalSec` |
 | `gitweave remove <branch...>` / `gitweave remove --all` | Stop including remote branches added with `add` |
 | `gitweave off <lane...>` | Take lanes out of the preview, e.g. one that's broken. Accepts globs like `'origin/claude/*'`, which also cover lanes that appear later |
 | `gitweave on <lane...>` / `gitweave on --all` | Put lanes back in |
-| `gitweave status [--json]` | Last result: the app's URL, included and excluded lanes, conflicting files, build state, last Anyship deploy |
+| `gitweave status [--json]` | Whether it's running; what it watches (worktrees, PRs, remote patterns, lanes turned off); every source lane with its state (`live`, `resolving`, `conflict`, `error`, `off`, `stale`, `pending`) and where it comes from; and the outputs (preview commit and folder, local URL, last Anyship deploy) |
 | `gitweave pause` / `gitweave resume` | Stop/start updating the preview and Anyship deploys while `up` keeps running |
 
 Never edit files in the preview worktree; every update resets it.
@@ -74,7 +73,7 @@ With `anyship` on, `gitweave up` deploys the combined preview to its own Anyship
 - After `anyshipDebounceSec` with no new merge, the merged commit is exported to a plain folder next to the preview (`<previewPath>-anyship`) and deployed with the installed `anyship deploy`. The first deploy creates `<app>-integration`; that folder keeps the integration project's identity afterwards.
 - `.env*`, `.dev.vars*` and key files (`*.pem`, `*.key`, …) are never uploaded; the integration app gets its settings from Anyship's environment configuration.
 - One deploy runs at a time, with at most one queued after it; a merge identical to the last deployed one is skipped. The local preview and app restarts never wait on it.
-- A failure is logged and recorded, and the next change retries. `gitweave status` and the last line of `gitweave list` show `anyship: <url> @ <sha> (ok|deploying|failed: reason)`.
+- A failure is logged and recorded, and the next change retries. `gitweave status` shows `anyship: <url> @ <sha> (ok|deploying|failed: reason)`.
 
 ## How it works
 

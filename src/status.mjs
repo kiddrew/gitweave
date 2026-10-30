@@ -84,36 +84,6 @@ export function summarize(status, { time: withTime = true } = {}) {
   return line;
 }
 
-const paint = (code) => (text) => (process.stdout.isTTY && !process.env.NO_COLOR ? `\x1b[${code}m${text}\x1b[0m` : text);
-const bold = paint(1), dim = paint(2), green = paint(32), yellow = paint(33), red = paint(31), cyan = paint(36);
+export const paint = (code) => (text) => (process.stdout.isTTY && !process.env.NO_COLOR ? `\x1b[${code}m${text}\x1b[0m` : text);
+export const bold = paint(1), dim = paint(2), green = paint(32), yellow = paint(33), red = paint(31), cyan = paint(36);
 
-// The multi-line report `gitweave up` prints once it is running in the background.
-export function startupReport(status, pid) {
-  const rows = [];
-  const row = (label, values, color = (v) => v) => [].concat(values).forEach((v, i) => rows.push(`  ${dim((i ? '' : label).padEnd(10))}${color(v)}`));
-  if (status) {
-    if (status.local) row('URL', status.local, (v) => bold(cyan(v)));
-    row('Preview', `${short(status.merged)} on ${status.base.name}  ${dim(new Date(status.updatedAt).toLocaleTimeString())}`);
-    const included = status.lanes.filter((l) => l.status === 'included');
-    row('Lanes', included.length ? included.map((l) => `${green('●')} ${l.name}${l.resolved?.length ? dim('  (conflicts resolved)') : ''}`) : dim('none'));
-    const waiting = status.lanes.filter((l) => !['included', 'off', 'stale'].includes(l.status));
-    if (waiting.length) row('Excluded', waiting.map((l) => {
-      const why = l.resolving?.state === 'resolving' ? 'resolving conflicts…' : l.resolving?.state === 'failed' ? `could not resolve: ${l.resolving.reason}` : l.conflicts?.length ? `conflict: ${l.conflicts.join(', ')}` : l.reason;
-      return `${l.resolving?.state === 'resolving' ? yellow('◐') : red('●')} ${l.name}  ${dim(why)}`;
-    }));
-    const off = status.lanes.filter((l) => l.status === 'off').map((l) => l.name);
-    if (off.length) row('Off', off.join(', '), dim);
-    const stale = status.lanes.filter((l) => l.status === 'stale').length;
-    if (stale) row('Stale', `${stale} skipped`, dim);
-    if (status.build?.state === 'failed') row('Build', `${status.build.step} failed, previous app still running`, red);
-    if (status.anyship && status.anyship.state !== 'idle') row('Anyship', anyshipLine(status.anyship).replace(/^anyship: /, ''));
-    if (status.paused) row('Paused', 'merges and deploys are paused', yellow);
-  }
-  return [
-    `${green('✓')} ${bold('gitweave is running')} ${dim(`(pid ${pid})`)}`,
-    '',
-    ...rows,
-    ...(rows.length ? [''] : []),
-    dim('  gitweave ls · gitweave logs -f · gitweave down'),
-  ].join('\n');
-}

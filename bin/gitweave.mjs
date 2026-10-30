@@ -7,7 +7,7 @@ import { CONFIG_FILE, loadConfig, suggestConfig } from '../src/config.mjs';
 import { Engine } from '../src/engine.mjs';
 import { copyLocalFiles, ensurePreview } from '../src/preview.mjs';
 import { openRepo } from '../src/repo.mjs';
-import { anyshipLine, matchesOff, readOff, readRemotes, readStatus, setPaused, startupReport, summarize, writeOff, writeRemotes } from '../src/status.mjs';
+import { anyshipLine, remotePatterns, matchesOff, readOff, readRemotes, readStatus, paint, setPaused, summarize, writeOff, writeRemotes } from '../src/status.mjs';
 import { discoverLanes } from '../src/lanes.mjs';
 import { runCommand } from '../src/runner.mjs';
 import { git, out } from '../src/git.mjs';
@@ -22,8 +22,7 @@ Commands:
   down            Stop the background gitweave
   logs [-f]       Show (or follow) the background gitweave's log
   merge           Merge once and update the preview, then exit
-  status          Show the last merge result
-  list | ls       Show every lane: live, conflict, off or pending, and where it comes from
+  status          Show whether it's running, every source lane and its state, and the outputs
   add <branch...> Include remote branches as lanes ('feature-x', 'origin/feature-x' or globs like 'origin/claude/*');
                   --all includes every remote branch, and new ones as they're pushed
   remove <branch...>  Stop including remote branches added with \`add\` (--all removes every remote glob)
@@ -36,7 +35,7 @@ Options:
   --no-run        (up) Keep the preview updated but don't start the app
   --anyship       (up) Also deploy the merged preview to Anyship (same as "anyship": true)
   --dry-run       (merge) Report what would be included without touching the preview
-  --json          (list, status, merge) Print machine-readable output
+  --json          (status, merge) Print machine-readable output
 `;
 
 const pidFile = (repo) => join(repo.stateDir, 'up.pid');
@@ -53,6 +52,86 @@ function runningPid(repo) {
     rmSync(pidFile(repo), { force: true });
     return null;
   }
+}
+
+const bold = paint(1), dim = paint(2), green = paint(32), yellow = paint(33), red = paint(31), cyan = paint(36);
+const STATE_STYLE = { live: [green, '●'], resolving: [yellow, '◐'], conflict: [red, '●'], error: [red, '●'], pending: [yellow, '○'], off: [dim, '○'], stale: [dim, '○'] };
+
+const short = (sha) => (sha ? sha.slice(0, 7) : '-------');
+
+const shortPath = (p) => {
+  const rel = relative(process.cwd(), p) || '.';
+  const home = process.env.HOME && p.startsWith(`${process.env.HOME}/`) ? `~${p.slice(process.env.HOME.length)}` : p;
+  return rel.length < home.length ? rel : home;
+};
+
+// Every lane gitweave knows about, with its state in the last merge:
+// live (in the preview now), resolving/conflict/error (on but left out),
+// off (switched off), stale (remote branch with no recent commits, skipped),
+// pending (on, not merged yet: `gitweave up` isn't running or hasn't caught up).
+async function laneRows(repo, config) {
+  const lanes = await discoverLanes(repo, config);
+  const off = readOff(repo);
+  const status = readStatus(repo);
+  return lanes.map((lane) => {
+    const last = status?.lanes.find((l) => l.name === lane.name);
+    const state = matchesOff(lane.name, off) ? 'off'
+      : lane.stale ? 'stale'
+      : !last || last.status === 'off' ? 'pending'
+      : last.status === 'included' ? 'live'
+      : last.status === 'excluded' && last.resolving?.state === 'resolving' ? 'resolving'
+      : last.status === 'excluded' ? 'conflict'
+      : 'error';
+    const detail = state === 'conflict' ? `conflict in ${last.conflicts.join(', ')}${last.resolving?.state === 'failed' ? `; auto-resolve failed: ${last.resolving.reason}` : ''}`
+      : state === 'resolving' ? `resolving conflicts in ${last.conflicts.join(', ')}`
+      : state === 'live' && last.resolved?.length ? `conflicts resolved: ${last.resolved.join(', ')}`
+      : state === 'error' ? last.reason
+      : state === 'stale' ? `last commit ${lane.ageDays} days ago` : '';
+    const source = lane.path ? shortPath(lane.path) : lane.kind === 'pr' ? `PR #${lane.number} ${lane.branch}: ${lane.title}` : lane.ref.replace(/^refs\/remotes\//, 'remote ');
+    return { name: lane.name, state, kind: lane.kind, source, detail };
+  });
+}
+
+async function renderStatus(repo, config) {
+  const status = readStatus(repo);
+  const rows = await laneRows(repo, config);
+  const pid = runningPid(repo);
+  const lines = [pid ? `${green('✓')} ${bold('gitweave is running')} ${dim(`(pid ${pid})`)}` : `${red('✗')} ${bold('gitweave is not running')} ${dim('(`gitweave up` starts it)')}`];
+  if (status?.paused) lines.push(`${yellow('⏸')} merges and deploys are paused ${dim('(`gitweave resume`)')}`);
+
+  const watch = [
+    ['worktrees', 'every git worktree of this repo'],
+    ...(config.prs ? [['pull requests', 'open, non-draft']] : []),
+    ...remotePatterns(repo, config).map((p) => [p, 'remote branches · `gitweave remove` stops']),
+    ...readOff(repo).map((p) => [`off: ${p}`, '`gitweave on` turns back on']),
+  ];
+  const wide = Math.max(...watch.map(([w]) => w.length));
+  lines.push('', bold('Watching'), ...watch.map(([w, why]) => `  ${bold(w.padEnd(wide))}  ${dim(why)}`));
+
+  lines.push('', bold('Sources'));
+  const name = Math.max(...rows.map((r) => r.name.length), 4);
+  const state = Math.max(...rows.map((r) => r.state.length));
+  for (const r of rows) {
+    const [color, mark] = STATE_STYLE[r.state];
+    const faded = r.state === 'off' || r.state === 'stale';
+    lines.push(`  ${color(mark)} ${color(r.state.padEnd(state))}  ${(faded ? dim : bold)(r.name.padEnd(name))}  ${dim(r.source)}${r.detail ? `  ${color(r.detail)}` : ''}`);
+  }
+  const live = rows.filter((r) => r.state === 'live').length;
+  lines.push(dim(`  ${live} of ${rows.length} live`));
+
+  const out = (label, value) => lines.push(`  ${dim(label.padEnd(9))}${value}`);
+  lines.push('', bold('Outputs'));
+  out('Preview', status ? `${short(status.merged)} on ${status.base.name}  ${dim(`${new Date(status.updatedAt).toLocaleTimeString()} · ${shortPath(config.previewPath)}`)}` : dim(`no merge yet · ${shortPath(config.previewPath)}`));
+  if (status?.build?.state === 'failed') out('Build', red(`${status.build.step} failed, previous app still running`));
+  out('Local', status?.local ? bold(cyan(status.local)) : dim(config.run ? 'not serving yet' : 'no app configured'));
+  if (config.anyship || status?.anyship) {
+    const a = status?.anyship;
+    const color = a?.state === 'ok' ? green : a?.state === 'failed' ? red : yellow;
+    out('Anyship', a && a.state !== 'idle' ? `${a.url ? bold(cyan(a.url)) : dim('no URL yet')} ${dim(`@ ${short(a.commit)}`)} ${color(a.state === 'failed' ? `failed: ${a.reason}` : a.state)}` : dim('nothing deployed yet'));
+  }
+  if (status?.build?.state === 'failed') lines.push('', `${status.build.step} output:`, status.build.output);
+  lines.push('', dim('gitweave logs -f · gitweave down · gitweave off <lane>'));
+  return lines.join('\n');
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -84,21 +163,6 @@ async function main(argv) {
       const { code } = await runCommand(config.install, config.previewPath, (line) => console.log(`[install] ${line}`));
       if (code === 0) writeFileSync(join(repo.stateDir, 'installed'), new Date().toISOString());
       else console.log('Install failed; `gitweave up` will retry it.');
-    }
-    return 0;
-  }
-
-  if (command === 'status') {
-    const status = readStatus(repo);
-    console.log(flags.has('--json') ? JSON.stringify(status, null, 2) : summarize(status));
-    if (!flags.has('--json')) console.log(runningPid(repo) ? `running in the background (pid ${runningPid(repo)})` : 'not running (`gitweave up` starts it)');
-    if (status && !flags.has('--json')) {
-      for (const lane of status.lanes) {
-        const detail = lane.resolved?.length ? ` (resolved: ${lane.resolved.join(', ')})` : ['included', 'off'].includes(lane.status) ? '' : lane.resolving?.state === 'resolving' ? ` (resolving conflicts in ${lane.conflicts.join(', ')})` : ` (${lane.conflicts?.length ? `conflict in ${lane.conflicts.join(', ')}` : lane.reason})`;
-        console.log(`  ${lane.status.padEnd(8)} ${lane.name}${detail}`);
-      }
-      if (status.anyship) console.log(anyshipLine(status.anyship));
-      if (status.build?.state === 'failed') console.log(`\n${status.build.step} output:\n${status.build.output}`);
     }
     return 0;
   }
@@ -140,6 +204,12 @@ async function main(argv) {
 
   const config = await loadConfig(repo, command === 'up' && flags.has('--anyship') ? { anyship: true } : {});
 
+  if (command === 'status') {
+    if (flags.has('--json')) console.log(JSON.stringify({ ...readStatus(repo), sources: await laneRows(repo, config) }, null, 2));
+    else console.log(await renderStatus(repo, config));
+    return 0;
+  }
+
   if (command === 'add' || command === 'remove' || command === 'rm') {
     const remotes = (await out(['remote'], { cwd: repo.main })).split('\n').filter(Boolean);
     if (!remotes.length) throw new Error('This repository has no remotes.');
@@ -173,14 +243,14 @@ async function main(argv) {
     return 0;
   }
 
-  if (command === 'list' || command === 'ls' || command === 'on' || command === 'off') {
+  if (command === 'on' || command === 'off') {
     const names = rest.filter((a) => !a.startsWith('--'));
     const lanes = await discoverLanes(repo, config);
     let off = readOff(repo);
     if (command === 'off') {
-      if (!names.length) throw new Error('Name at least one lane to turn off (see `gitweave list`).');
+      if (!names.length) throw new Error('Name at least one lane to turn off (see `gitweave status`).');
       off = writeOff(repo, [...off, ...names]);
-    } else if (command === 'on') {
+    } else {
       if (!names.length && !flags.has('--all')) throw new Error('Name at least one lane to turn on, or pass --all.');
       // Turning on a lane that's covered by a glob means removing that glob.
       off = writeOff(repo, flags.has('--all') ? [] : off.filter((entry) => !names.some((n) => matchesOff(n, [entry]))));
@@ -188,47 +258,8 @@ async function main(argv) {
     for (const name of names) {
       if (!lanes.some((l) => matchesOff(l.name, [name]))) console.log(`note: "${name}" doesn't match a current lane${command === 'off' ? '; it will apply if one appears' : ''}.`);
     }
-    const status = readStatus(repo);
-    // State per lane: live (in the preview now), conflict/error (on but left out),
-    // off (switched off), stale (remote branch with no recent commits, skipped),
-    // pending (on, not merged yet: `gitweave up` isn't running or hasn't caught up).
-    const rows = lanes.map((lane) => {
-      const last = status?.lanes.find((l) => l.name === lane.name);
-      const state = matchesOff(lane.name, off) ? 'off'
-        : lane.stale ? 'stale'
-        : !last || last.status === 'off' ? 'pending'
-        : last.status === 'included' ? 'live'
-        : last.status === 'excluded' && last.resolving?.state === 'resolving' ? 'resolving'
-        : last.status === 'excluded' ? 'conflict'
-        : 'error';
-      const detail = state === 'conflict' ? `${last.conflicts.join(', ')}${last.resolving?.state === 'failed' ? `; auto-resolve failed: ${last.resolving.reason}` : ''}`
-        : state === 'resolving' ? `resolving conflicts in ${last.conflicts.join(', ')}`
-        : state === 'live' && last.resolved?.length ? `conflicts resolved by gitweave: ${last.resolved.join(', ')}`
-        : state === 'error' ? last.reason
-        : state === 'stale' ? `skipped: last commit ${lane.ageDays} days ago` : '';
-      const source = lane.path || (lane.kind === 'pr' ? `PR #${lane.number} ${lane.branch}: ${lane.title}` : lane.ref.replace(/^refs\/remotes\//, 'remote '));
-      return { name: lane.name, state, kind: lane.kind, source, detail };
-    });
-    if (flags.has('--json')) {
-      console.log(JSON.stringify(rows, null, 2));
-      return 0;
-    }
-    const width = Math.max(4, ...rows.map((r) => r.name.length));
-    console.log(`  ${'STATE'.padEnd(9)}${'LANE'.padEnd(width + 2)}SOURCE`);
-    const shortPath = (p) => {
-      const rel = relative(process.cwd(), p) || '.';
-      return rel.length < p.length ? rel : p;
-    };
-    for (const r of rows) {
-      console.log(`  ${r.state.padEnd(9)}${r.name.padEnd(width + 2)}${r.kind === 'worktree' ? shortPath(r.source) : r.source}${r.detail ? `  (${r.state === 'conflict' ? 'conflict in ' : ''}${r.detail})` : ''}`);
-    }
-    const live = rows.filter((r) => r.state === 'live').length;
-    const stale = rows.filter((r) => r.state === 'stale').length;
-    console.log(`\n${live} of ${rows.length} lanes live${stale ? ` · ${stale} stale skipped (older than ${config.staleDays} days)` : ''}${status ? ` · preview @ ${status.merged?.slice(0, 7)} on ${status.base.name}` : ' · no merge yet (run `gitweave up`)'}`);
-    if (!runningPid(repo)) console.log('gitweave is not running; `gitweave up` starts it.');
-    console.log(`preview: ${shortPath(config.previewPath)}${status?.local ? ` · ${status.local}` : ''}`);
-    if (config.anyship || status?.anyship) console.log(anyshipLine(status?.anyship));
-    if ((command === 'on' || command === 'off') && status) console.log('A running `gitweave up` picks this up within a couple of seconds.');
+    console.log(await renderStatus(repo, config));
+    if (readStatus(repo)) console.log(dim('\nA running `gitweave up` picks this up within a couple of seconds.'));
     return 0;
   }
 
@@ -266,7 +297,7 @@ async function main(argv) {
       console.log(`gitweave up exited:\n${readFileSync(logFile(repo), 'utf8').trim().split('\n').slice(-15).join('\n')}`);
       return 1;
     }
-    console.log(startupReport(status && new Date(status.updatedAt).getTime() >= startedAt ? status : null, child.pid));
+    console.log(await renderStatus(repo, config));
     return 0;
   }
 
