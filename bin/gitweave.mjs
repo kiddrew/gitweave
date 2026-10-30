@@ -7,7 +7,7 @@ import { CONFIG_FILE, loadConfig, suggestConfig } from '../src/config.mjs';
 import { Engine } from '../src/engine.mjs';
 import { copyLocalFiles, ensurePreview } from '../src/preview.mjs';
 import { openRepo } from '../src/repo.mjs';
-import { anyshipLine, matchesOff, readOff, readRemotes, readStatus, setPaused, summarize, writeOff, writeRemotes } from '../src/status.mjs';
+import { anyshipLine, matchesOff, readOff, readRemotes, readStatus, setPaused, startupReport, summarize, writeOff, writeRemotes } from '../src/status.mjs';
 import { discoverLanes } from '../src/lanes.mjs';
 import { runCommand } from '../src/runner.mjs';
 import { git, out } from '../src/git.mjs';
@@ -266,9 +266,7 @@ async function main(argv) {
       console.log(`gitweave up exited:\n${readFileSync(logFile(repo), 'utf8').trim().split('\n').slice(-15).join('\n')}`);
       return 1;
     }
-    console.log(`gitweave running in the background (pid ${child.pid})`);
-    if (status && new Date(status.updatedAt).getTime() >= startedAt) console.log(summarize(status));
-    console.log('`gitweave ls` shows lanes, `gitweave logs -f` follows the log, `gitweave down` stops it.');
+    console.log(startupReport(status && new Date(status.updatedAt).getTime() >= startedAt ? status : null, child.pid));
     return 0;
   }
 
