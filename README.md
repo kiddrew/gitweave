@@ -26,7 +26,7 @@ node path/to/gitweave/bin/gitweave.mjs up     # watch, merge, run the app
 | `gitweave remove <branch...>` / `gitweave remove --all` | Stop including remote branches added with `add` |
 | `gitweave off <lane...>` | Take lanes out of the preview, e.g. one that's broken. Accepts globs like `'origin/claude/*'`, which also cover lanes that appear later |
 | `gitweave on <lane...>` / `gitweave on --all` | Put lanes back in |
-| `gitweave status [--json]` | Last result: included and excluded lanes, conflicting files, build state, local URL, last Anyship deploy |
+| `gitweave status [--json]` | Last result: the app's URL, included and excluded lanes, conflicting files, build state, last Anyship deploy |
 | `gitweave pause` / `gitweave resume` | Stop/start updating the preview and Anyship deploys while `up` keeps running |
 
 Never edit files in the preview worktree; every update resets it.
@@ -47,7 +47,8 @@ Never edit files in the preview worktree; every update resets it.
 | `ignore` | `node_modules`, build dirs | Path segments whose changes don't trigger a merge |
 | `copy` | `.env`, `.env.local`, `.dev.vars`, `pnpm-workspace.yaml`, `.npmrc` | Files copied from the main worktree into the preview when git doesn't track them (e.g. pnpm build approvals kept in an uncommitted `pnpm-workspace.yaml`) |
 | `settleMs` / `pollMs` | 1500 / 2000 | Quiet period before merging; how often to check base, worktrees and pause |
-| `portless` | `false` | Serve the app at a stable `.localhost` URL through [portless](https://github.com/vercel-labs/portless): `true` uses `<repo>.gitweave` (e.g. `https://dcmodel.gitweave.localhost`), a string picks the name. Falls back to the plain app if portless isn't installed |
+| `portless` | `true` | Serve the app at a stable, per-project URL through [portless](https://github.com/vercel-labs/portless) when it's installed: `<repo>.gitweave` (e.g. `https://dcmodel.gitweave.localhost`), or a string to pick the name. Without portless (or with `false`), gitweave reports the local URL the dev server prints |
+| `prs` | `true` | Include open, non-draft GitHub pull requests as lanes (`pr/<n>`), fetched every `fetchIntervalSec` through `gh`. A PR whose branch is checked out in a worktree stays a worktree lane |
 | `anyship` | `false` | Deploy the merged preview to Anyship while `up` runs (also `up --anyship`) |
 | `anyshipReviewApp` | `integration` | Suffix of the Anyship project the preview deploys to: `<app>-<suffix>` |
 | `anyshipDebounceSec` | 30 | Quiet period after the last merge before deploying |

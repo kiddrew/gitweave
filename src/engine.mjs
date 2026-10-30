@@ -7,7 +7,7 @@ import { integrate } from './merge.mjs';
 import { ensurePreview, updatePreview } from './preview.mjs';
 import { AppRunner, runCommand } from './runner.mjs';
 import { AnyshipDeployer } from './anyship.mjs';
-import { portlessCommand, portlessName, portlessUrl } from './portless.mjs';
+import { expandScript, portlessCommand, portlessName, portlessUrl } from './portless.mjs';
 import { syncPullRequests } from './prs.mjs';
 import { isPaused, matchesOff, readOff, readStatus, remotePatterns, summarize, writeStatus } from './status.mjs';
 
@@ -35,7 +35,7 @@ export class Engine {
     this.settleTimer = null;
     this.signature = null;
     this.runner = run && config.run && update
-      ? new AppRunner(config.run, config.previewPath, { onLine: this.appLog, onState: (s) => this.onAppState(s) })
+      ? new AppRunner(config.run, config.previewPath, { onLine: (line) => this.onAppLine(line), onState: (s) => this.onAppState(s) })
       : null;
     this.deployer = deploy && config.anyship && update
       ? new AnyshipDeployer(repo, config, {
@@ -47,8 +47,22 @@ export class Engine {
       : null;
   }
 
+  // Without portless the app picks its own port, so take the first local URL
+  // its dev server prints after each start (`Local: http://localhost:5173/`).
+  onAppLine(line) {
+    this.appLog(line);
+    if (this.portless || this.detectedUrl) return;
+    const match = line.replace(/\x1b\[[0-9;]*m/g, '').match(/https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\])(?::\d+)?[^\s]*/);
+    if (!match) return;
+    this.detectedUrl = true;
+    this.local = match[0].replace('0.0.0.0', 'localhost').replace(/[).,]+$/, '');
+    this.log(`app at ${this.local}`);
+    if (this.lastStatus) this.writeStatus({ ...this.lastStatus, local: this.local });
+  }
+
   onAppState(state) {
     this.app = state;
+    if (state.state === 'running') this.detectedUrl = false;
     if (state.state === 'crashed') this.log(`app exited (${state.signal || state.code}); restarting in ${state.restartInMs / 1000}s`);
   }
 
@@ -281,7 +295,8 @@ export class Engine {
       this.log('portless not found; running the app on its own port');
       return;
     }
-    this.runner.command = portlessCommand(name, this.config.run);
+    this.runner.command = portlessCommand(name, expandScript(this.config.run, this.config.previewPath));
+    this.portless = true;
     this.local = url;
     this.log(`app at ${url}`);
   }

@@ -278,6 +278,18 @@ test('remote branches with no recent commits are listed as stale and left out', 
   assert.ok(existsSync(join(config.previewPath, 'fresh-work.txt')));
 });
 
+test('the local URL the app prints is shown in status', async (t) => {
+  const { repo, config, cleanup } = await setup(undefined, { run: 'printf "  \\033[32m➜\\033[0m  Local:   http://localhost:5174/\\n"; sleep 30' });
+  const engine = new Engine(repo, config, { log: () => {}, appLog: () => {} });
+  t.after(async () => {
+    await engine.stop();
+    cleanup();
+  });
+  await engine.start();
+  await waitFor(() => readStatus(repo)?.local);
+  assert.equal(readStatus(repo).local, 'http://localhost:5174/');
+});
+
 test('open non-draft pull requests are lanes; drafts and checked-out branches are not', async (t) => {
   const { repo, config, main, root, cleanup } = await setup();
   t.after(cleanup);

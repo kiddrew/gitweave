@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Engine } from '../src/engine.mjs';
-import { portlessCommand, portlessName } from '../src/portless.mjs';
+import { expandScript, portlessCommand, portlessName } from '../src/portless.mjs';
 import { readStatus } from '../src/status.mjs';
-import { read, setup, waitFor } from './helpers.mjs';
+import { read, setup, waitFor, write } from './helpers.mjs';
 
 const quiet = { log: () => {}, appLog: () => {} };
 const FAKE = fileURLToPath(new URL('./fixtures/fake-portless.mjs', import.meta.url));
@@ -15,7 +15,6 @@ test('portless: the app runs under a stable .localhost name shown in status', as
   process.env.GITWEAVE_PORTLESS_BIN = FAKE;
   const engine = new Engine(repo, config, quiet);
   t.after(async () => {
-    delete process.env.GITWEAVE_PORTLESS_BIN;
     await engine.stop();
     cleanup();
   });
@@ -34,7 +33,6 @@ test('portless: a configured name is used and sanitized; a missing binary falls 
   process.env.GITWEAVE_PORTLESS_BIN = '/nonexistent/portless';
   const engine = new Engine(repo, config, quiet);
   t.after(async () => {
-    delete process.env.GITWEAVE_PORTLESS_BIN;
     await engine.stop();
     cleanup();
   });
@@ -49,4 +47,15 @@ test('portless: plain commands pass through so framework detection works; shell 
   assert.equal(portlessCommand('n', 'npm run dev'), 'portless n npm run dev');
   assert.equal(portlessCommand('n', 'PORT=1 vite | tee log'), `portless n sh -c 'PORT=1 vite | tee log'`);
   delete process.env.GITWEAVE_PORTLESS_BIN;
+});
+
+test('portless: package scripts are expanded so the framework gets the port', async (t) => {
+  const { main, cleanup } = await setup();
+  t.after(cleanup);
+  write(join(main, 'package.json'), JSON.stringify({ scripts: { dev: 'vite', start: 'node server.js', both: 'a && b' } }));
+  assert.equal(expandScript('pnpm run dev', main), 'pnpm exec vite');
+  assert.equal(expandScript('npm run dev', main), 'npx vite');
+  assert.equal(expandScript('npm start', main), 'npx node server.js');
+  assert.equal(expandScript('pnpm run both', main), 'pnpm run both');
+  assert.equal(expandScript('cargo run', main), 'cargo run');
 });

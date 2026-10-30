@@ -40,6 +40,8 @@ export async function setup(files, overrides = {}) {
   // Never ask the real GitHub about pull requests.
   process.env.GITWEAVE_GH_BIN = fileURLToPath(new URL('./fixtures/fake-gh.mjs', import.meta.url));
   delete process.env.FAKE_GH_PRS;
+  // Portless is on by default; tests that want it point this at the fake.
+  process.env.GITWEAVE_PORTLESS_BIN = join(fixture.root, 'no-portless');
   const repo = await openRepo(fixture.main);
   const config = await loadConfig(repo, { settleMs: 100, pollMs: 200, ...overrides });
   return { ...fixture, repo, config };

@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { basename } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 
 const bin = () => process.env.GITWEAVE_PORTLESS_BIN || 'portless';
 
@@ -19,6 +20,20 @@ const quote = (arg) => (/^[\w./@:-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `
 export function portlessCommand(name, run) {
   const plain = /^[\w./@:=+, -]+$/.test(run.trim());
   return `${quote(bin())} ${quote(name)} ${plain ? run.trim() : `sh -c ${quote(run)}`}`;
+}
+
+const EXEC = { npm: 'npx', pnpm: 'pnpm exec', yarn: 'yarn exec', bun: 'bunx' };
+
+// portless can only hand a framework its port (`vite --port …`) when it sees the
+// framework's own command, so `pnpm run dev` whose script is `vite` becomes
+// `pnpm exec vite`. Anything else is left as written.
+export function expandScript(run, cwd) {
+  const match = run.trim().match(/^(npm|pnpm|yarn|bun)(?: run)? ([\w:.-]+)$/);
+  const pkgFile = join(cwd, 'package.json');
+  if (!match || !existsSync(pkgFile)) return run;
+  const script = JSON.parse(readFileSync(pkgFile, 'utf8')).scripts?.[match[2]];
+  if (!script || !/^[\w./@:=+, -]+$/.test(script.trim())) return run;
+  return `${EXEC[match[1]]} ${script.trim()}`;
 }
 
 // The URL portless serves the name at, or null when portless isn't installed.

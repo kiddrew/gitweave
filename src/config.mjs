@@ -23,7 +23,7 @@ export const DEFAULTS = {
   fetchIntervalSec: 60,
   staleDays: 30,
   prs: true,
-  portless: false,
+  portless: true,
   anyship: false,
   anyshipReviewApp: 'integration',
   anyshipDebounceSec: 30,
