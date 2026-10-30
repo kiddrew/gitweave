@@ -138,7 +138,7 @@ export class Engine {
       status.changed = applied.changed;
       // A failed install (here or in `init`) is retried on the next pass, not only when dependencies change.
       const reinstall = Boolean(config.install) && !existsSync(this.installedFile());
-      if (created || reinstall || applied.depsChanged || applied.changed.length || applied.copied.length) {
+      if (created || reinstall || applied.depsChanged || applied.changed.length || applied.copied.length || (config.rebuild && !this.built)) {
         await this.afterUpdate({ created, ...applied, depsChanged: applied.depsChanged || reinstall });
       }
       status.build = this.build;
@@ -166,7 +166,8 @@ export class Engine {
       writeFileSync(this.installedFile(), new Date().toISOString());
       restart = true;
     }
-    if (config.rebuild && (created || changed.length || depsChanged)) {
+    // The first pass always builds: the preview may have no build output yet.
+    if (config.rebuild && (created || changed.length || depsChanged || !this.built)) {
       this.build = { state: 'building', at: new Date().toISOString() };
       const build = await runCommand(config.rebuild, cwd, this.appLog);
       if (build.code !== 0) {
@@ -174,6 +175,7 @@ export class Engine {
         this.build = { state: 'failed', step: 'rebuild', at: new Date().toISOString(), output: build.output };
         return;
       }
+      this.built = true;
       restart = true;
     }
     this.build = { state: 'ok', at: new Date().toISOString() };

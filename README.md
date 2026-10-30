@@ -39,7 +39,7 @@ Never edit files in the preview worktree; every update resets it.
 | `base` | `main`, else `master` | Branch every lane is merged onto |
 | `previewPath` | `~/.gitweave/<repo>-<id>/preview` | Where the preview worktree lives (keep it outside the repo's working tree; `~/` is expanded). Set `GITWEAVE_HOME` to move the default root. A preview left in `.git/gitweave/preview` by earlier versions keeps being used |
 | `run` | guessed | Long-running app command, run in the preview. Use a watching dev server for live reload |
-| `rebuild` | none | Run after each update (compiled stacks). On failure the previous app keeps running; on success the app restarts |
+| `rebuild` | none | Run on the first pass and after each update (compiled stacks). On failure the previous app keeps running; on success the app restarts |
 | `install` | guessed | Run when the preview is created or a dependency file changes; the app restarts afterwards |
 | `installOn` | lockfiles, `package.json` | File names that trigger `install` |
 | `remotePatterns` | `[]` | Remote branches always included as lanes, on top of those added with `gitweave add` (fetched every `fetchIntervalSec`). Branches already merged into the base are skipped |
@@ -55,6 +55,10 @@ Never edit files in the preview worktree; every update resets it.
 | `anyship` | `false` | Deploy the merged preview to Anyship while `up` runs (also `up --anyship`) |
 | `anyshipReviewApp` | `integration` | Suffix of the Anyship project the preview deploys to: `<app>-<suffix>` |
 | `anyshipDebounceSec` | 30 | Quiet period after the last merge before deploying |
+
+## Running the whole app
+
+The preview should run everything a deploy would, not just the frontend's dev server. `gitweave init` suggests that where it can: for a Cloudflare Workers project (a `wrangler` config) it builds with `<pm> run build` and runs `wrangler dev` on the preview's port, so the API, bindings and local D1 come up alongside the built frontend. For other stacks, point `run` at a command that starts the full server.
 
 ## Conflict resolution
 

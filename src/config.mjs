@@ -84,7 +84,13 @@ export async function suggestConfig(repo) {
       : existsSync(join(repo.main, 'bun.lockb')) || existsSync(join(repo.main, 'bun.lock')) ? 'bun'
       : 'npm';
     suggestion.install = `${pm} install`;
-    if (pkg.scripts?.dev) suggestion.run = `${pm} run dev`;
+    const wrangler = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((f) => existsSync(join(repo.main, f)));
+    if (wrangler) {
+      // A Worker serving the built app runs the whole thing (frontend and API),
+      // where `dev` is often just the frontend's dev server.
+      if (pkg.scripts?.build) suggestion.rebuild = `${pm} run build`;
+      suggestion.run = `${pm} exec wrangler dev --port \${PORT:-8788} --ip 127.0.0.1`;
+    } else if (pkg.scripts?.dev) suggestion.run = `${pm} run dev`;
     else if (pkg.scripts?.start) suggestion.run = `${pm} start`;
   } else if (existsSync(join(repo.main, 'Cargo.toml'))) {
     suggestion.rebuild = 'cargo build';
