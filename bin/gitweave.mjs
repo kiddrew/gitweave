@@ -55,7 +55,7 @@ function runningPid(repo) {
 }
 
 const bold = paint(1), dim = paint(2), green = paint(32), yellow = paint(33), red = paint(31), cyan = paint(36);
-const STATE_STYLE = { live: [green, '●'], resolving: [yellow, '◐'], conflict: [red, '●'], error: [red, '●'], pending: [yellow, '○'], off: [dim, '○'], stale: [dim, '○'] };
+const STATE_STYLE = { live: [green, '●'], resolving: [yellow, '◐'], 'sign in': [yellow, '◐'], conflict: [red, '●'], error: [red, '●'], pending: [yellow, '○'], off: [dim, '○'], stale: [dim, '○'] };
 
 const short = (sha) => (sha ? sha.slice(0, 7) : '-------');
 
@@ -80,10 +80,12 @@ async function laneRows(repo, config) {
       : !last || last.status === 'off' ? 'pending'
       : last.status === 'included' ? 'live'
       : last.status === 'excluded' && last.resolving?.state === 'resolving' ? 'resolving'
+      : last.status === 'excluded' && last.resolving?.state === 'login' ? 'sign in'
       : last.status === 'excluded' ? 'conflict'
       : 'error';
     const detail = state === 'conflict' ? `conflict in ${last.conflicts.join(', ')}${last.resolving?.state === 'failed' ? `; auto-resolve failed: ${last.resolving.reason}` : ''}`
       : state === 'resolving' ? `resolving conflicts in ${last.conflicts.join(', ')}`
+      : state === 'sign in' ? `conflicts wait for you to sign in to Claude (${last.conflicts.length} files)`
       : state === 'live' && last.resolved?.length ? `conflicts resolved: ${last.resolved.join(', ')}`
       : state === 'error' ? last.reason
       : state === 'stale' ? `last commit ${lane.ageDays} days ago` : '';
@@ -97,6 +99,9 @@ async function renderStatus(repo, config) {
   const rows = await laneRows(repo, config);
   const pid = runningPid(repo);
   const lines = [pid ? `${green('✓')} ${bold('gitweave is running')} ${dim(`(pid ${pid})`)}` : `${red('✗')} ${bold('gitweave is not running')} ${dim('(`gitweave up` starts it)')}`];
+  if (rows.some((r) => r.state === 'sign in')) {
+    lines.push('', `${yellow('⚠')} ${bold('Sign in to Claude so gitweave can resolve conflicts:')}`, `  run ${bold('claude')} in a terminal and type ${bold('/login')}. gitweave retries every minute on its own.`);
+  }
   if (status?.paused) lines.push(`${yellow('⏸')} merges and deploys are paused ${dim('(`gitweave resume`)')}`);
 
   const watch = [

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -6,6 +6,9 @@ import { IDENTITY, git, out } from './git.mjs';
 import { listWorktrees, realpathMaybe } from './repo.mjs';
 
 const TAIL = 4000;
+// The resolver ran but isn't signed in (expired OAuth, no API key, ...).
+const AUTH = /authenticat|\b401\b|\/login|not logged in|invalid api key|oauth/i;
+const loginRetryMs = () => Number(process.env.GITWEAVE_LOGIN_RETRY_MS) || 60000;
 const MARKERS = /^(<{7}|={7}|>{7})( |$)/m;
 
 export const DEFAULT_RESOLVER = 'claude -p "$GITWEAVE_PROMPT" --permission-mode acceptEdits --allowedTools "Read Edit Write Grep Glob Bash(git diff:*) Bash(git log:*) Bash(git show:*)"';
@@ -67,15 +70,28 @@ function prompt(job) {
   ].join('\n');
 }
 
+let askedAt = 0;
+
+// gitweave runs in the background, so ask with a desktop notification (macOS),
+// at most every half hour. `gitweave status` and the log say the same.
+export function askToSignIn() {
+  if (process.env.GITWEAVE_NOTIFY === '0' || process.platform !== 'darwin' || Date.now() - askedAt < 30 * 60 * 1000) return;
+  askedAt = Date.now();
+  const script = 'display notification "Run claude in a terminal and type /login. gitweave retries on its own." with title "gitweave: sign in to Claude" subtitle "Needed to resolve merge conflicts"';
+  execFile('osascript', ['-e', script], () => {});
+}
+
 // Resolves conflicting lanes in the background, one at a time, in a private
 // worktree next to the preview. Source worktrees and branches are never
 // touched; the result is cached by conflictKey and applied in memory.
 export class Resolver {
-  constructor(repo, config, { log = () => {}, onDone = () => {} } = {}) {
+  constructor(repo, config, { log = () => {}, onDone = () => {}, onLogin = () => {} } = {}) {
     this.repo = repo;
     this.config = config;
     this.log = log;
     this.onDone = onDone;
+    this.onLogin = onLogin;
+    this.retries = new Set();
     this.dir = resolveWorktreePath(config);
     this.queue = new Map();
     this.state = new Map(); // key -> { state: 'resolving' | 'failed', reason }
@@ -143,9 +159,25 @@ export class Resolver {
       mkdirSync(resolutionsDir(this.repo), { recursive: true });
       writeFileSync(join(resolutionsDir(this.repo), `${job.key}.json`), JSON.stringify({ lane: job.lane, at: new Date().toISOString(), files }, null, 2));
       this.state.delete(job.key);
+      this.signedIn = true;
       this.log(`resolved ${job.lane}`);
       this.onDone(job);
     } catch (error) {
+      if (AUTH.test(error.message)) {
+        // Not a bad resolution: the user has to sign in. Ask, then keep retrying.
+        this.state.set(job.key, { state: 'login' });
+        this.log(`can't resolve ${job.lane} until you sign in to Claude: run \`claude\` and type /login (retrying every ${Math.round(loginRetryMs() / 1000)}s)`);
+        this.onLogin(job);
+        const timer = setTimeout(() => {
+          this.retries.delete(timer);
+          if (this.state.get(job.key)?.state !== 'login') return;
+          this.state.delete(job.key);
+          this.request(job);
+        }, loginRetryMs());
+        this.retries.add(timer);
+        this.onDone(job);
+        return;
+      }
       this.state.set(job.key, { state: 'failed', reason: error.message.split('\n')[0] });
       this.log(`could not resolve ${job.lane}: ${error.message.split('\n')[0]}`);
       this.onDone(job);
@@ -168,6 +200,7 @@ export class Resolver {
   async stop() {
     this.stopped = true;
     this.queue.clear();
+    for (const timer of this.retries) clearTimeout(timer);
     if (this.running) await this.running;
   }
 }

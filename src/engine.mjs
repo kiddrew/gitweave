@@ -9,7 +9,7 @@ import { AppRunner, runCommand } from './runner.mjs';
 import { AnyshipDeployer } from './anyship.mjs';
 import { expandScript, portlessCommand, portlessName, portlessUrl } from './portless.mjs';
 import { syncPullRequests } from './prs.mjs';
-import { Resolver } from './resolve.mjs';
+import { Resolver, askToSignIn } from './resolve.mjs';
 import { isPaused, matchesOff, readOff, readStatus, remotePatterns, summarize, writeStatus } from './status.mjs';
 
 const stamp = () => new Date().toLocaleTimeString();
@@ -40,7 +40,7 @@ export class Engine {
       : null;
     // Conflicting lanes are resolved in the background; the next pass applies the result.
     this.resolver = resolveConflicts && config.resolve && update
-      ? new Resolver(repo, config, { log: this.log, onDone: () => this.trigger({ force: true }) })
+      ? new Resolver(repo, config, { log: this.log, onDone: () => this.trigger({ force: true }), onLogin: () => askToSignIn() })
       : null;
     this.deployer = deploy && config.anyship && update
       ? new AnyshipDeployer(repo, config, {
@@ -117,7 +117,7 @@ export class Engine {
       if (!this.resolver) continue;
       this.resolver.request({ key, lane: lane.name, ours, theirs, paths: lane.conflicts });
       const state = this.resolver.status(key);
-      if (state) lane.resolving = state.state === 'failed' ? { state: 'failed', reason: state.reason } : { state: 'resolving' };
+      if (state) lane.resolving = state.state === 'failed' ? { state: 'failed', reason: state.reason } : { state: state.state === 'login' ? 'login' : 'resolving' };
     }
     const status = {
       updatedAt: new Date().toISOString(),

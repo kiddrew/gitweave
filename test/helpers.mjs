@@ -38,6 +38,7 @@ export async function setup(files, overrides = {}) {
   // Keep previews (default ~/.gitweave) inside the fixture's temp folder.
   process.env.GITWEAVE_HOME = join(fixture.root, 'gitweave-home');
   // Never ask the real GitHub about pull requests.
+  process.env.GITWEAVE_NOTIFY = '0';
   process.env.GITWEAVE_GH_BIN = fileURLToPath(new URL('./fixtures/fake-gh.mjs', import.meta.url));
   delete process.env.FAKE_GH_PRS;
   // Portless is on by default; tests that want it point this at the fake.

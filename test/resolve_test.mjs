@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { git } from '../src/git.mjs';
@@ -24,6 +25,7 @@ async function conflicting(t, env = {}) {
     await engine.stop();
     delete process.env.FAKE_RESOLVER_LOG;
     delete process.env.FAKE_RESOLVER_FAIL;
+    delete process.env.FAKE_RESOLVER_SIGNED_OUT;
     fixture.cleanup();
   });
   const runs = () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).length : 0);
@@ -63,4 +65,20 @@ test('resolve: a failed resolution leaves the lane out and says why', async (t) 
   assert.match(lane(repo, 'feature-a').resolving.reason, /resolver exited 3/);
   await new Promise((r) => setTimeout(r, 500));
   assert.equal(runs(), 1, 'no retry until the conflict changes');
+});
+
+test('resolve: when the resolver needs a sign-in, it says so and retries until it works', async (t) => {
+  const token = join(tmpdir(), `gitweave-signed-in-${process.pid}`);
+  rmSync(token, { force: true });
+  process.env.GITWEAVE_LOGIN_RETRY_MS = '200';
+  t.after(() => {
+    delete process.env.GITWEAVE_LOGIN_RETRY_MS;
+    rmSync(token, { force: true });
+  });
+  const { repo, engine } = await conflicting(t, { FAKE_RESOLVER_SIGNED_OUT: token });
+  await engine.start();
+  await waitFor(() => lane(repo, 'feature-a')?.resolving?.state === 'login');
+  assert.equal(lane(repo, 'feature-a').status, 'excluded');
+  writeFileSync(token, '');
+  await waitFor(() => lane(repo, 'feature-a')?.status === 'included');
 });

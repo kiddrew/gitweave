@@ -66,7 +66,8 @@ When a lane conflicts with the lanes before it, gitweave leaves it out for the m
 
 - The lane is merged for real in a private worktree next to the preview (`<previewPath>-resolve`), and `resolveCommand` (by default the Claude Code CLI, `claude -p`, allowed only to read and edit files) fixes the conflict markers, keeping both sides' intent.
 - The resolved files are cached under `.git/gitweave/resolutions/`, keyed by exactly what collided (each conflicted file's base, ours and theirs). The next merge applies them in memory and the lane goes `live`, with the resolved files listed. Edits elsewhere reuse the cache; a new collision in those files is resolved again.
-- One resolution runs at a time. If it fails or leaves markers, the lane stays out with the reason in `list`, and isn't retried until the conflict changes (or gitweave restarts).
+- One resolution runs at a time. If it fails or leaves markers, the lane stays out with the reason in `status`, and isn't retried until the conflict changes (or gitweave restarts).
+- If `claude` isn't signed in, gitweave asks you to sign in (a desktop notification on macOS, at most every 30 minutes, plus a banner in `status`) and retries every minute until it works. Run `claude` and type `/login`; nothing else is needed.
 - Source worktrees and branches are never touched; the resolution exists only in the preview. Set `"resolve": false` to only report conflicts.
 
 ## Anyship

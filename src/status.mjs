@@ -72,7 +72,7 @@ export function summarize(status, { time: withTime = true } = {}) {
   const off = status.lanes.filter((l) => l.status === 'off').map((l) => l.name);
   const stale = status.lanes.filter((l) => l.status === 'stale').length;
   const problems = status.lanes.filter((l) => !['included', 'off', 'stale'].includes(l.status))
-    .map((l) => `${l.name} (${l.resolving?.state === 'resolving' ? 'resolving' : l.conflicts?.length ? `conflict: ${l.conflicts.join(', ')}` : l.reason})`);
+    .map((l) => `${l.name} (${l.resolving?.state === 'resolving' ? 'resolving' : l.resolving?.state === 'login' ? 'waiting for Claude sign-in' : l.conflicts?.length ? `conflict: ${l.conflicts.join(', ')}` : l.reason})`);
   const mark = status.paused ? '⏸' : status.build?.state === 'failed' ? '✗' : '✓';
   let line = `${mark} ${time}preview @ ${short(status.merged)} on ${status.base.name} · lanes: ${included.length ? included.join(', ') : 'none'}`;
   if (off.length) line += ` · off: ${off.join(', ')}`;
