@@ -68,6 +68,7 @@ export class Engine {
         lane.off = true;
         continue;
       }
+      if (lane.stale) continue;
       try {
         if (lane.kind === 'remote') Object.assign(lane, await resolveRemote(repo, lane));
         else if (this.allDirty || this.dirty.has(lane.name) || !this.snapshots.has(lane.name)) {
@@ -83,7 +84,7 @@ export class Engine {
     this.dirty.clear();
     this.allDirty = false;
 
-    const key = [base, ...lanes.map((l) => `${l.name}:${l.off ? 'off' : l.commit || l.error}`)].join('|');
+    const key = [base, ...lanes.map((l) => `${l.name}:${l.off ? 'off' : l.stale ? 'stale' : l.commit || l.error}`)].join('|');
     if (key === this.lastKey && !force) return null;
     this.lastKey = key;
     this.cycles++;

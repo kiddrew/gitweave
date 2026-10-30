@@ -248,3 +248,32 @@ test('remote globs added at runtime pick up branches pushed later; merged ones a
   assert.ok(names.includes('origin/new-work'));
   assert.ok(!names.includes('origin/already-merged') && !names.includes('origin/main'), names.join(','));
 });
+
+test('remote branches with no recent commits are listed as stale and left out', async (t) => {
+  const { repo, config, main, root, cleanup } = await setup(undefined, { staleDays: 30 });
+  t.after(cleanup);
+  const origin = join(root, 'origin.git');
+  await git(['init', '-q', '--bare', origin], { cwd: root });
+  await git(['remote', 'add', 'origin', origin], { cwd: main });
+  await git(['push', '-q', 'origin', 'main'], { cwd: main });
+  const clone = join(root, 'cloud');
+  await git(['clone', '-q', origin, clone], { cwd: root });
+  for (const [branch, date] of [['old-work', '2020-01-01T00:00:00Z'], ['fresh-work', new Date().toISOString()]]) {
+    await git(['checkout', '-q', '-B', branch, 'origin/main'], { cwd: clone });
+    write(join(clone, `${branch}.txt`), 'x\n');
+    await git(['add', '-A'], { cwd: clone });
+    await git(['-c', 'user.name=c', '-c', 'user.email=c@x', 'commit', '-q', '-m', branch], { cwd: clone, env: { GIT_COMMITTER_DATE: date, GIT_AUTHOR_DATE: date } });
+    await git(['push', '-q', 'origin', branch], { cwd: clone });
+  }
+  await git(['fetch', '-q', 'origin'], { cwd: main });
+  writeRemotes(repo, ['origin/*']);
+
+  const engine = new Engine(repo, config, { ...quiet, run: false });
+  const status = await engine.cycle({ force: true });
+  const old = status.lanes.find((l) => l.name === 'origin/old-work');
+  assert.equal(old.status, 'stale');
+  assert.match(old.reason, /no commits in \d+ days/);
+  assert.equal(status.lanes.find((l) => l.name === 'origin/fresh-work').status, 'included');
+  assert.ok(!existsSync(join(config.previewPath, 'old-work.txt')));
+  assert.ok(existsSync(join(config.previewPath, 'fresh-work.txt')));
+});

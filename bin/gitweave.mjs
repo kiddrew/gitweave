@@ -70,7 +70,7 @@ async function main(argv) {
     console.log(flags.has('--json') ? JSON.stringify(status, null, 2) : summarize(status));
     if (status && !flags.has('--json')) {
       for (const lane of status.lanes) {
-        const detail = lane.status === 'included' || lane.status === 'off' ? '' : ` (${lane.conflicts?.length ? `conflict in ${lane.conflicts.join(', ')}` : lane.reason})`;
+        const detail = ['included', 'off'].includes(lane.status) ? '' : ` (${lane.conflicts?.length ? `conflict in ${lane.conflicts.join(', ')}` : lane.reason})`;
         console.log(`  ${lane.status.padEnd(8)} ${lane.name}${detail}`);
       }
       if (status.anyship) console.log(anyshipLine(status.anyship));
@@ -137,15 +137,18 @@ async function main(argv) {
     }
     const status = readStatus(repo);
     // State per lane: live (in the preview now), conflict/error (on but left out),
-    // off (switched off), pending (on, not merged yet: `gitweave up` isn't running or hasn't caught up).
+    // off (switched off), stale (remote branch with no recent commits, skipped),
+    // pending (on, not merged yet: `gitweave up` isn't running or hasn't caught up).
     const rows = lanes.map((lane) => {
       const last = status?.lanes.find((l) => l.name === lane.name);
       const state = matchesOff(lane.name, off) ? 'off'
+        : lane.stale ? 'stale'
         : !last || last.status === 'off' ? 'pending'
         : last.status === 'included' ? 'live'
         : last.status === 'excluded' ? 'conflict'
         : 'error';
-      const detail = state === 'conflict' ? last.conflicts.join(', ') : state === 'error' ? last.reason : '';
+      const detail = state === 'conflict' ? last.conflicts.join(', ') : state === 'error' ? last.reason
+        : state === 'stale' ? `skipped: last commit ${lane.ageDays} days ago` : '';
       return { name: lane.name, state, kind: lane.kind, source: lane.path || lane.ref.replace(/^refs\/remotes\//, 'remote '), detail };
     });
     if (flags.has('--json')) {
@@ -162,7 +165,8 @@ async function main(argv) {
       console.log(`  ${r.state.padEnd(9)}${r.name.padEnd(width + 2)}${r.kind === 'worktree' ? shortPath(r.source) : r.source}${r.detail ? `  (${r.state === 'conflict' ? 'conflict in ' : ''}${r.detail})` : ''}`);
     }
     const live = rows.filter((r) => r.state === 'live').length;
-    console.log(`\n${live} of ${rows.length} lanes live${status ? ` · preview @ ${status.merged?.slice(0, 7)} on ${status.base.name}` : ' · no merge yet (run `gitweave up`)'}`);
+    const stale = rows.filter((r) => r.state === 'stale').length;
+    console.log(`\n${live} of ${rows.length} lanes live${stale ? ` · ${stale} stale skipped (older than ${config.staleDays} days)` : ''}${status ? ` · preview @ ${status.merged?.slice(0, 7)} on ${status.base.name}` : ' · no merge yet (run `gitweave up`)'}`);
     console.log(`preview: ${shortPath(config.previewPath)}${status?.local ? ` · ${status.local}` : ''}`);
     if (config.anyship || status?.anyship) console.log(anyshipLine(status?.anyship));
     if ((command === 'on' || command === 'off') && status) console.log('A running `gitweave up` picks this up within a couple of seconds.');
@@ -174,7 +178,7 @@ async function main(argv) {
     const engine = new Engine(repo, config, { run: false, update: !flags.has('--dry-run'), log: json ? () => {} : console.log });
     const status = await engine.cycle({ force: true });
     if (json) console.log(JSON.stringify(status, null, 2));
-    return status?.lanes.some((l) => l.status !== 'included' && l.status !== 'off') ? 1 : 0;
+    return status?.lanes.some((l) => !['included', 'off', 'stale'].includes(l.status)) ? 1 : 0;
   }
 
   if (command === 'up') {

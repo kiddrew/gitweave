@@ -13,6 +13,10 @@ export async function integrate(cwd, baseCommit, lanes) {
       results.push({ ...entry, status: 'off', reason: 'turned off' });
       continue;
     }
+    if (lane.stale) {
+      results.push({ ...entry, status: 'stale', reason: `no commits in ${lane.ageDays} days`, ageDays: lane.ageDays });
+      continue;
+    }
     if (!lane.commit) {
       results.push({ ...entry, status: 'error', reason: lane.error || 'No snapshot.' });
       continue;

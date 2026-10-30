@@ -70,11 +70,13 @@ export function summarize(status, { time: withTime = true } = {}) {
   const time = withTime ? `${new Date(status.updatedAt).toLocaleTimeString()} ` : '';
   const included = status.lanes.filter((l) => l.status === 'included').map((l) => l.name);
   const off = status.lanes.filter((l) => l.status === 'off').map((l) => l.name);
-  const problems = status.lanes.filter((l) => l.status !== 'included' && l.status !== 'off')
+  const stale = status.lanes.filter((l) => l.status === 'stale').length;
+  const problems = status.lanes.filter((l) => !['included', 'off', 'stale'].includes(l.status))
     .map((l) => `${l.name} (${l.conflicts?.length ? `conflict: ${l.conflicts.join(', ')}` : l.reason})`);
   const mark = status.paused ? '⏸' : status.build?.state === 'failed' ? '✗' : '✓';
   let line = `${mark} ${time}preview @ ${short(status.merged)} on ${status.base.name} · lanes: ${included.length ? included.join(', ') : 'none'}`;
   if (off.length) line += ` · off: ${off.join(', ')}`;
+  if (stale) line += ` · ${stale} stale skipped`;
   if (problems.length) line += ` · excluded: ${problems.join('; ')}`;
   if (status.build?.state === 'failed') line += ` · ${status.build.step} failed, previous app still running`;
   if (status.local) line += ` · ${status.local}`;

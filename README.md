@@ -21,7 +21,7 @@ node path/to/gitweave/bin/gitweave.mjs up     # watch, merge, run the app
 | `gitweave init` | Writes `gitweave.json` guessed from the project and creates the preview worktree |
 | `gitweave up [--no-run] [--anyship]` | Watches every worktree, keeps the preview merged, runs and supervises the app; `--anyship` also deploys it (see below) |
 | `gitweave merge [--dry-run] [--json]` | One merge, then exit (exit code 1 if any lane was excluded) |
-| `gitweave list [--json]` (or `ls`) | Every lane with its state (`live`, `conflict`, `error`, `off`, `pending`) and source worktree or remote branch |
+| `gitweave list [--json]` (or `ls`) | Every lane with its state (`live`, `conflict`, `error`, `off`, `stale`, `pending`) and source worktree or remote branch |
 | `gitweave add <branch...>` / `gitweave add --all` | Include remote branches as lanes: `feature-x` (on origin), `origin/feature-x`, or globs like `'origin/claude/*'`. `--all` includes every remote branch. Globs cover branches pushed later; they appear within `fetchIntervalSec` |
 | `gitweave remove <branch...>` / `gitweave remove --all` | Stop including remote branches added with `add` |
 | `gitweave off <lane...>` | Take lanes out of the preview, e.g. one that's broken. Accepts globs like `'origin/claude/*'`, which also cover lanes that appear later |
@@ -42,6 +42,7 @@ Never edit files in the preview worktree; every update resets it.
 | `install` | guessed | Run when the preview is created or a dependency file changes; the app restarts afterwards |
 | `installOn` | lockfiles, `package.json` | File names that trigger `install` |
 | `remotePatterns` | `[]` | Remote branches always included as lanes, on top of those added with `gitweave add` (fetched every `fetchIntervalSec`). Branches already merged into the base are skipped |
+| `staleDays` | 30 | Remote branches with no commits in this many days are skipped and shown as `stale` in `list` (`0` includes them all) |
 | `order` | `[]` | Lane names merged first, in this order. Then the main worktree, other worktrees, remotes, alphabetically |
 | `ignore` | `node_modules`, build dirs | Path segments whose changes don't trigger a merge |
 | `copy` | `.env`, `.env.local`, `.dev.vars`, `pnpm-workspace.yaml`, `.npmrc` | Files copied from the main worktree into the preview when git doesn't track them (e.g. pnpm build approvals kept in an uncommitted `pnpm-workspace.yaml`) |

@@ -19,14 +19,19 @@ export async function discoverLanes(repo, config) {
 
   const remote = [];
   for (const pattern of remotePatterns(repo, config)) {
-    const refs = await out(['for-each-ref', '--format=%(refname)', `refs/remotes/${pattern}`], { cwd: repo.main });
-    for (const ref of refs.split('\n').filter(Boolean)) {
+    const refs = await out(['for-each-ref', '--format=%(refname) %(committerdate:unix)', `refs/remotes/${pattern}`], { cwd: repo.main });
+    for (const line of refs.split('\n').filter(Boolean)) {
+      const [ref, date] = line.split(' ');
       if (ref.endsWith('/HEAD')) continue;
       // Already merged into the base (or the base itself): nothing to preview.
       if (config.base && ref === `refs/remotes/${config.base}`) continue;
       const merged = await git(['merge-base', '--is-ancestor', ref, config.base], { cwd: repo.main, ok: [0, 1] });
       if (merged.code === 0) continue;
-      remote.push({ kind: 'remote', name: ref.slice('refs/remotes/'.length), ref });
+      const lane = { kind: 'remote', name: ref.slice('refs/remotes/'.length), ref };
+      // Abandoned branches stay listed but out of the merge.
+      const ageDays = Math.floor((Date.now() / 1000 - Number(date)) / 86400);
+      if (config.staleDays > 0 && ageDays > config.staleDays) Object.assign(lane, { stale: true, ageDays });
+      remote.push(lane);
     }
   }
 
